@@ -76,13 +76,45 @@ export async function POST(req: Request) {
         const supabase = createSupabaseAdmin();
         const normalizedQuery = lastMessage.toLowerCase();
         
+        // Detectar si la pregunta es sobre ubicación/dirección
+        const locationKeywords = ['donde', 'ubicacion', 'ubicación', 'direccion', 'dirección', 'direcciones', 'retiran', 'retiro', 'local', 'tienda', 'sucursal', 'sucursales', 'direccion', 'direcciones', 'lugar', 'lugares', 'estan', 'están', 'estas', 'estás', 'estamos', 'estamos ubicados', 'nos encontramos', 'nos ubicamos', 'estamos en', 'estamos ubicados en', 'direccion fisica', 'dirección física', 'direccion del local', 'dirección del local'];
+        const isLocationQuery = locationKeywords.some(keyword => normalizedQuery.includes(keyword));
+        
+        // Sinónimos y expansión para ubicación
+        const locationSynonyms: Record<string, string[]> = {
+          'donde': ['ubicacion', 'ubicación', 'direccion', 'dirección', 'local', 'tienda', 'lugar', 'estan', 'están'],
+          'ubicacion': ['donde', 'direccion', 'dirección', 'local', 'tienda', 'lugar'],
+          'direccion': ['donde', 'ubicacion', 'ubicación', 'local', 'tienda', 'lugar', 'retiran', 'retiro'],
+          'retiran': ['donde', 'ubicacion', 'ubicación', 'direccion', 'dirección', 'local', 'tienda', 'retiro'],
+        };
+        
+        // Si es pregunta de ubicación, expandir sinónimos
+        let expandedQuery = normalizedQuery;
+        if (isLocationQuery) {
+          console.log('📍 Detectada pregunta sobre ubicación, expandiendo sinónimos...');
+          for (const [key, synonyms] of Object.entries(locationSynonyms)) {
+            if (normalizedQuery.includes(key)) {
+              expandedQuery = normalizedQuery + ' ' + synonyms.join(' ');
+              break;
+            }
+          }
+        }
+        
         // Extraer palabras clave importantes (eliminar palabras comunes)
-        // NOTA: No eliminar "mi" y "tu" ya que pueden ser relevantes para búsquedas personales
-        const stopWords = ['que', 'cual', 'donde', 'cuando', 'como', 'por', 'para', 'con', 'de', 'la', 'el', 'los', 'las', 'un', 'una', 'es', 'son', 'está', 'están', 'tiene', 'tienen', 'su', 'sus', 'nuestro', 'nuestra', 'tienes'];
-        const keywords = normalizedQuery
+        // IMPORTANTE: NO eliminar palabras de ubicación si es una pregunta de ubicación
+        const stopWords = ['que', 'cual', 'cuando', 'como', 'por', 'para', 'con', 'de', 'la', 'el', 'los', 'las', 'un', 'una', 'es', 'son', 'está', 'están', 'tiene', 'tienen', 'su', 'sus', 'nuestro', 'nuestra', 'tienes'];
+        // Si NO es pregunta de ubicación, también filtrar "donde"
+        const finalStopWords = isLocationQuery ? stopWords : [...stopWords, 'donde'];
+        
+        const keywords = expandedQuery
           .split(/\s+/)
-          .filter(word => word.length > 1 && !stopWords.includes(word.toLowerCase()))
+          .filter(word => word.length > 1 && !finalStopWords.includes(word.toLowerCase()))
           .map(word => word.replace(/[.,!?;:]/g, '').toLowerCase()); // Limpiar puntuación y normalizar
+        
+        // Si es pregunta de ubicación, agregar palabras clave adicionales
+        if (isLocationQuery && keywords.length === 0) {
+          keywords.push('ubicacion', 'direccion', 'local', 'tienda', 'santiago', 'coronel', 'bannen');
+        }
         
         console.log('🔍 Palabras clave extraídas:', keywords);
         console.log('📝 Consulta normalizada:', normalizedQuery);
@@ -369,6 +401,17 @@ export async function POST(req: Request) {
           console.log('📝 Construyendo System Prompt con contexto RAG (ruta sin productos)');
           console.log('📊 Longitud del contexto:', ragContext.length, 'caracteres');
           console.log('📄 Preview del contexto:', ragContext.substring(0, 200) + '...');
+          
+          // Detectar si es pregunta de ubicación para ajustar el prompt
+          const isLocationQuestion = /(donde|ubicacion|ubicación|direccion|dirección|retiran|retiro|local|tienda|sucursal|lugar|estan|están|estamos|estamos ubicados|nos encontramos|nos ubicamos|estamos en|direccion fisica|dirección física|direccion del local|dirección del local)/i.test(lastMessage);
+          
+          const locationInstructions = isLocationQuestion ? `
+- **ESPECIALMENTE PARA PREGUNTAS DE UBICACIÓN:**
+  - Si el contexto menciona una dirección, ubicación, local, tienda, o lugar (aunque use palabras diferentes como "estamos ubicados en", "nos encontramos en", "dirección", "local", "tienda", "sucursal", etc.), úsala para responder.
+  - Variaciones como "donde estan", "cual es tu ubicacion", "direccion", "donde se retiran", "cual es tu direccion", "donde estan ubicados" son TODAS preguntas sobre ubicación y debes responder con la información de ubicación del contexto.
+  - Si el contexto menciona "Bannen 83", "Coronel", "Santiago", "Providencia", o cualquier dirección o ubicación, úsala para responder preguntas sobre ubicación.
+` : '';
+          
           // System Prompt restrictivo usando SOLO contexto RAG
           enhancedSystemPrompt = `Eres un asistente de ventas de Artesellos, experto en sus políticas de productos, envíos, y pagos. Tu única fuente de verdad es la sección de 'CONTEXTO PROPORCIONADO' que se encuentra a continuación.
 
@@ -378,7 +421,7 @@ export async function POST(req: Request) {
   3. Adapta el lenguaje del contexto a la pregunta del usuario de forma natural.
   4. Si la información en el contexto es relevante para la pregunta (aunque use palabras ligeramente diferentes), úsala para responder.
   5. Solo si la pregunta NO tiene NADA que ver con el contexto proporcionado, responde: 'Lamento, no tengo esa información específica en nuestra base de datos, por favor contáctanos por WhatsApp para obtener ayuda.'
-
+${locationInstructions}
 - **REGLA DE FORMATO:** No menciones que utilizaste una base de datos o que tienes un 'contexto'. Simplemente responde la pregunta de forma natural y amigable, como si supieras esa información de memoria.
 
 ---
@@ -420,6 +463,17 @@ PREGUNTA DEL USUARIO: ${lastMessage}`;
       if (hasRAGContext && ragContext) {
         console.log('📝 Construyendo System Prompt con contexto RAG');
         console.log('📊 Longitud del contexto:', ragContext.length, 'caracteres');
+        
+        // Detectar si es pregunta de ubicación para ajustar el prompt
+        const isLocationQuestion = /(donde|ubicacion|ubicación|direccion|dirección|retiran|retiro|local|tienda|sucursal|lugar|estan|están|estamos|estamos ubicados|nos encontramos|nos ubicamos|estamos en|direccion fisica|dirección física|direccion del local|dirección del local)/i.test(lastMessage);
+        
+        const locationInstructions = isLocationQuestion ? `
+- **ESPECIALMENTE PARA PREGUNTAS DE UBICACIÓN:**
+  - Si el contexto menciona una dirección, ubicación, local, tienda, o lugar (aunque use palabras diferentes como "estamos ubicados en", "nos encontramos en", "dirección", "local", "tienda", "sucursal", etc.), úsala para responder.
+  - Variaciones como "donde estan", "cual es tu ubicacion", "direccion", "donde se retiran", "cual es tu direccion", "donde estan ubicados" son TODAS preguntas sobre ubicación y debes responder con la información de ubicación del contexto.
+  - Si el contexto menciona "Bannen 83", "Coronel", "Santiago", "Providencia", o cualquier dirección o ubicación, úsala para responder preguntas sobre ubicación.
+` : '';
+        
         // System Prompt restrictivo usando SOLO contexto RAG
           enhancedSystemPrompt = `Eres un asistente de ventas de Artesellos, experto en sus políticas de productos, envíos, y pagos. Tu única fuente de verdad es la sección de 'CONTEXTO PROPORCIONADO' que se encuentra a continuación.
 
@@ -429,7 +483,7 @@ PREGUNTA DEL USUARIO: ${lastMessage}`;
   3. Adapta el lenguaje del contexto a la pregunta del usuario de forma natural.
   4. Si la información en el contexto es relevante para la pregunta (aunque use palabras ligeramente diferentes), úsala para responder.
   5. Solo si la pregunta NO tiene NADA que ver con el contexto proporcionado, responde: 'Lamento, no tengo esa información específica en nuestra base de datos, por favor contáctanos por WhatsApp para obtener ayuda.'
-
+${locationInstructions}
 - **REGLA DE FORMATO:** No menciones que utilizaste una base de datos o que tienes un 'contexto'. Simplemente responde la pregunta de forma natural y amigable, como si supieras esa información de memoria.
 
 ---
@@ -444,10 +498,46 @@ PREGUNTA DEL USUARIO: ${lastMessage}
 Responde de forma natural usando la información del contexto:`;
         console.log('✅ System Prompt construido con contexto RAG');
       } else {
-        // Si no hay contexto RAG, usar prompt base restrictivo
-        enhancedSystemPrompt = `${baseSystemPrompt}
+        // Si no hay contexto RAG, intentar búsqueda mejorada con sinónimos de ubicación
+        const isLocationQuestion = /(donde|ubicacion|ubicación|direccion|dirección|retiran|retiro|local|tienda|sucursal|lugar|estan|están|estamos|estamos ubicados|nos encontramos|nos ubicamos|estamos en|direccion fisica|dirección física|direccion del local|dirección del local)/i.test(lastMessage);
+        
+        if (isLocationQuestion) {
+          console.log('📍 Pregunta de ubicación detectada sin contexto RAG, intentando búsqueda mejorada...');
+          // Intentar búsqueda con sinónimos expandidos
+          const locationTerms = ['ubicacion', 'ubicación', 'direccion', 'dirección', 'local', 'tienda', 'sucursal', 'lugar', 'estamos ubicados', 'nos encontramos', 'bannen', 'coronel', 'santiago', 'providencia'];
+          const expandedLocationQuery = lastMessage + ' ' + locationTerms.join(' ');
+          
+          try {
+            const locationContexts = await findRelevantContext(expandedLocationQuery, 0.2, 15);
+            if (locationContexts.length > 0) {
+              ragContext = locationContexts.join('\n\n---\n\n');
+              console.log('✅ Contexto de ubicación recuperado:', locationContexts.length, 'fragmentos');
+              
+              // Construir prompt con contexto de ubicación
+              enhancedSystemPrompt = `Eres un asistente de ventas de Artesellos. Responde la pregunta del usuario sobre ubicación usando SOLO la información del contexto proporcionado. Si el contexto menciona una dirección, ubicación, local, tienda, o lugar, úsala para responder. Variaciones como "donde estan", "cual es tu ubicacion", "direccion", "donde se retiran", "cual es tu direccion", "donde estan ubicados" son TODAS preguntas sobre ubicación.
+
+CONTEXTO PROPORCIONADO:
+${ragContext}
+
+PREGUNTA DEL USUARIO: ${lastMessage}
+
+Responde de forma natural con la información de ubicación del contexto:`;
+            } else {
+              enhancedSystemPrompt = `${baseSystemPrompt}
 
 PREGUNTA DEL USUARIO: ${lastMessage}`;
+            }
+          } catch (err) {
+            console.error('❌ Error en búsqueda mejorada de ubicación:', err);
+            enhancedSystemPrompt = `${baseSystemPrompt}
+
+PREGUNTA DEL USUARIO: ${lastMessage}`;
+          }
+        } else {
+          enhancedSystemPrompt = `${baseSystemPrompt}
+
+PREGUNTA DEL USUARIO: ${lastMessage}`;
+        }
       }
       
       const completion = await openai.chat.completions.create({

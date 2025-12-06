@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import TopBanner from "@/components/TopBanner";
-import ChatInterface from "@/components/ChatInterface";
-import { CartProvider } from "@/lib/cartContext";
-import { FavoritesProvider } from "@/lib/favoritesContext";
-import { WholesaleLevelBanner } from "@/components/wholesale/WholesalePrice";
+import ClientProviders from "@/components/ClientProviders";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -40,22 +34,9 @@ export default function RootLayout({
       <body
         className={`${inter.variable} font-sans antialiased bg-gray-50`}
       >
-        <CartProvider>
-          <FavoritesProvider>
-            <div className="min-h-screen flex flex-col">
-              <TopBanner />
-              <Navbar />
-              <WholesaleLevelBanner />
-              <main className="flex-1">
-                {children}
-              </main>
-              <Footer />
-              
-              {/* Chatbot flotante disponible en todas las páginas */}
-              <ChatInterface />
-            </div>
-          </FavoritesProvider>
-        </CartProvider>
+        <ClientProviders>
+          {children}
+        </ClientProviders>
       </body>
     </html>
   );
