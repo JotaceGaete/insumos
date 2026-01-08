@@ -105,9 +105,23 @@ export default function ChatInterface() {
       console.log('📡 Response status:', response.status);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Error response:', errorText);
-        throw new Error(`Error en la respuesta del servidor: ${response.status} ${response.statusText}`);
+        let errorMessage = `Error en la respuesta del servidor: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          } else if (errorData.details) {
+            errorMessage = errorData.details;
+          }
+        } catch {
+          // Si no es JSON, usar el texto plano
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        }
+        console.error('❌ Error response:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       const reader = response.body?.getReader();

@@ -9,10 +9,17 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Cliente OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Cliente OpenAI - inicializado condicionalmente
+let openai: OpenAI | null = null;
+try {
+  if (process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+} catch (error) {
+  console.error('❌ Error al inicializar OpenAI:', error);
+}
 
 export const maxDuration = 30;
 
@@ -50,7 +57,31 @@ function formatProductResults(data: any[]) {
 
 export async function POST(req: Request) {
   try {
+    // Validar variables de entorno críticas
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('❌ OPENAI_API_KEY no configurada');
+      return new Response(JSON.stringify({ error: "Error de configuración del servidor" }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('❌ Variables de Supabase no configuradas');
+      return new Response(JSON.stringify({ error: "Error de configuración del servidor" }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     const { messages } = await req.json();
+    
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return new Response(JSON.stringify({ error: "Mensajes inválidos" }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
     
     // System Prompt base - Solo se usa cuando NO hay contexto RAG
     const baseSystemPrompt = `Eres un asistente de ventas de Artesellos. Si no tienes información específica en el contexto proporcionado, responde: "Lamento, no tengo esa información específica en nuestra base de datos, por favor contáctanos por WhatsApp para obtener ayuda."`;
@@ -73,7 +104,14 @@ export async function POST(req: Request) {
         
         // FALLBACK: Búsqueda por palabras clave si la búsqueda vectorial falla
         console.log('🔄 Iniciando búsqueda por palabras clave como fallback...');
-        const supabase = createSupabaseAdmin();
+        let supabase;
+        try {
+          supabase = createSupabaseAdmin();
+        } catch (supabaseError: any) {
+          console.error('❌ Error al crear cliente Supabase admin:', supabaseError);
+          // Continuar sin búsqueda por palabras clave si falla
+          throw supabaseError;
+        }
         const normalizedQuery = lastMessage.toLowerCase();
         
         // Detectar si la pregunta es sobre ubicación/dirección
@@ -244,8 +282,12 @@ export async function POST(req: Request) {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('⚠️ Error al recuperar contexto RAG:', error);
+      // Continuar sin contexto RAG si hay error, pero registrar el error
+      if (error.message?.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        console.error('❌ Error crítico: SUPABASE_SERVICE_ROLE_KEY no configurada');
+      }
       // Continuar sin contexto RAG si hay error
     }
 
@@ -444,6 +486,9 @@ PREGUNTA DEL USUARIO: ${lastMessage}`;
         }
         
         console.log('🤖 Enviando a OpenAI con System Prompt de', enhancedSystemPrompt.length, 'caracteres');
+        if (!openai) {
+          throw new Error('OpenAI no está configurado');
+        }
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
           messages: [
@@ -540,6 +585,9 @@ PREGUNTA DEL USUARIO: ${lastMessage}`;
         }
       }
       
+      if (!openai) {
+        throw new Error('OpenAI no está configurado');
+      }
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
@@ -579,8 +627,17 @@ PREGUNTA DEL USUARIO: ${lastMessage}`;
     });
 
   } catch (error: any) {
-    console.error('❌ Error:', error);
-    return new Response(JSON.stringify({ error: "Error conectando con IA", details: error.message }), { 
+    console.error('❌ Error en /api/chat:', error);
+    console.error('❌ Stack:', error.stack);
+    
+    // Mensaje de error más amigable para el usuario
+    const errorMessage = error.message || 'Error desconocido';
+    const isConfigError = errorMessage.includes('SUPABASE') || errorMessage.includes('OPENAI') || errorMessage.includes('configurado');
+    
+    return new Response(JSON.stringify({ 
+      error: isConfigError ? "Error en la respuesta del servidor: 500" : "Error en la respuesta del servidor: 500",
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    }), { 
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

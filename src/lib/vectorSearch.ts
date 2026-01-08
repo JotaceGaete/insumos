@@ -3,15 +3,27 @@ import OpenAI from 'openai';
 import { createSupabaseAdmin } from './supabaseServer';
 import type { KnowledgeBase } from './supabase';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Inicializar OpenAI solo si la API key está disponible
+let openai: OpenAI | null = null;
+try {
+  if (process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+} catch (error) {
+  console.error('❌ Error al inicializar OpenAI:', error);
+}
 
 /**
  * Convierte una consulta de texto en un vector de embeddings usando OpenAI
  */
 async function getQueryEmbedding(query: string): Promise<number[]> {
   try {
+    if (!openai) {
+      throw new Error('OpenAI no está configurado. OPENAI_API_KEY no está disponible.');
+    }
+    
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-small', // o 'text-embedding-ada-002' según disponibilidad
       input: query,
@@ -41,11 +53,26 @@ export async function findRelevantContext(
     console.log('📊 Parámetros:', { match_threshold, match_count });
 
     // Paso 1: Vectorizar la consulta
-    const queryEmbedding = await getQueryEmbedding(query);
-    console.log('✅ Embedding generado, dimensión:', queryEmbedding.length);
+    let queryEmbedding: number[];
+    try {
+      queryEmbedding = await getQueryEmbedding(query);
+      console.log('✅ Embedding generado, dimensión:', queryEmbedding.length);
+    } catch (embeddingError: any) {
+      console.error('❌ Error al generar embedding:', embeddingError);
+      return [];
+    }
 
     // Paso 2: Búsqueda en Supabase usando pg_vector
-    const supabase = createSupabaseAdmin();
+    let supabase;
+    try {
+      supabase = createSupabaseAdmin();
+    } catch (supabaseError: any) {
+      console.error('❌ Error al crear cliente Supabase admin:', supabaseError);
+      if (supabaseError.message?.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        console.error('❌ SUPABASE_SERVICE_ROLE_KEY no configurada');
+      }
+      return [];
+    }
 
     // Intentar primero con la función RPC
     const { data: rpcData, error: rpcError } = await (supabase as any).rpc('match_knowledge_base', {
@@ -175,7 +202,13 @@ async function findRelevantContextManual(
   match_count: number
 ): Promise<string[]> {
   try {
-    const supabase = createSupabaseAdmin();
+    let supabase;
+    try {
+      supabase = createSupabaseAdmin();
+    } catch (supabaseError: any) {
+      console.error('❌ Error al crear cliente Supabase admin en búsqueda manual:', supabaseError);
+      return [];
+    }
     const { data, error } = await (supabase as any)
       .from('knowledge_base')
       .select('content, embedding')
