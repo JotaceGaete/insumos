@@ -58,17 +58,31 @@ function formatProductResults(data: any[]) {
 export async function POST(req: Request) {
   try {
     // Validar variables de entorno críticas
+    const missingVars: string[] = [];
+    
     if (!process.env.OPENAI_API_KEY) {
+      missingVars.push('OPENAI_API_KEY');
       console.error('❌ OPENAI_API_KEY no configurada');
-      return new Response(JSON.stringify({ error: "Error de configuración del servidor" }), { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
     }
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('❌ Variables de Supabase no configuradas');
-      return new Response(JSON.stringify({ error: "Error de configuración del servidor" }), { 
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      missingVars.push('NEXT_PUBLIC_SUPABASE_URL');
+      console.error('❌ NEXT_PUBLIC_SUPABASE_URL no configurada');
+    }
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      missingVars.push('SUPABASE_SERVICE_ROLE_KEY');
+      console.error('❌ SUPABASE_SERVICE_ROLE_KEY no configurada');
+    }
+
+    if (missingVars.length > 0) {
+      const errorMsg = `Error de configuración del servidor: Faltan las siguientes variables de entorno: ${missingVars.join(', ')}`;
+      console.error('❌', errorMsg);
+      return new Response(JSON.stringify({ 
+        error: process.env.NODE_ENV === 'development' 
+          ? errorMsg 
+          : "Error de configuración del servidor" 
+      }), { 
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -84,7 +98,22 @@ export async function POST(req: Request) {
     }
     
     // System Prompt base - Solo se usa cuando NO hay contexto RAG
-    const baseSystemPrompt = `Eres un asistente de ventas de Artesellos. Si no tienes información específica en el contexto proporcionado, responde: "Lamento, no tengo esa información específica en nuestra base de datos, por favor contáctanos por WhatsApp para obtener ayuda."`;
+    const baseSystemPrompt = `Eres un asistente de ventas de Artesellos, una tienda especializada en timbres personalizados profesionales.
+
+INFORMACIÓN GENERAL QUE CONOCES:
+- Artesellos vende timbres de diferentes marcas: Shiny, Trodat, Automatik
+- Los timbres pueden ser automáticos o manuales
+- Ofrecen personalización de timbres con texto, logos y diseños
+- Tienen tienda física en Santiago, Chile
+- Realizan envíos a todo Chile
+- Aceptan diferentes métodos de pago
+
+INSTRUCCIONES:
+- Si el usuario pregunta sobre timbres, productos, precios, o disponibilidad, sé proactivo y ofrece ayuda
+- Puedes recomendar modelos populares como Shiny 722, Trodat 4912, Automatik 413
+- Si no tienes información específica sobre un modelo, sugiere que contacten por WhatsApp para más detalles
+- Sé amigable, profesional y útil
+- NO uses el mensaje genérico de "no tengo información" a menos que sea absolutamente necesario`;
 
     const lastMessage = messages[messages.length - 1]?.content || '';
     console.log('📨 Mensaje recibido:', lastMessage);
@@ -323,10 +352,18 @@ export async function POST(req: Request) {
 
     // Detectar menciones de productos para forzar búsqueda
     const productKeywords = ['shiny', 'trodat', 'automatik', '722', '723', '4912', '9511', 'timbre', 'sello', 'automático'];
+    const productRequestPatterns = [
+      /\b(?:necesito|quiero|busco|necesitamos|queremos|buscamos|me interesa|me interesan)\s+(?:un|una|unos|unas)?\s*(?:timbre|sello|producto)/i,
+      /\b(?:qué|que|cuales|cuáles|que tipo de|que tipos de)\s+(?:timbre|sellos|productos)\s+(?:tienen|tienes|ofrecen|venden)/i,
+      /\b(?:muéstrame|muestrame|muéstrenme|muestrenme|dame|dame|recomiendame|recomiéndame)\s+(?:timbre|sellos|productos)/i,
+      /\b(?:tienes|tienen|hay|disponible|disponibles)\s+(?:timbre|sellos|productos)/i,
+    ];
+    
     const normalizedMessage = normalizeBrand(lastMessage);
+    const isProductRequest = productRequestPatterns.some(pattern => pattern.test(lastMessage));
     const shouldSearchProduct = productKeywords.some(keyword => 
       normalizedMessage.includes(keyword)
-    ) || isPurchaseRequest;
+    ) || isPurchaseRequest || isProductRequest;
 
     console.log('🔍 ¿Buscar producto?', shouldSearchProduct);
 
@@ -382,14 +419,18 @@ export async function POST(req: Request) {
         const modelo = parts[1];
         console.log('🔍 Búsqueda específica:', { marca, modelo });
         query = query.ilike('marca', `%${marca}%`).ilike('modelo', `%${modelo}%`);
+      } else if (isProductRequest && !searchTerm.match(/\b(shiny|trodat|automatik)\s*\d+\b/i) && !searchTerm.match(/\b(shiny|trodat|automatik)\b/i)) {
+        // Si es una consulta genérica sobre productos sin término específico, buscar todos los productos disponibles
+        console.log('🔍 Búsqueda general de productos activada (consulta genérica)');
+        query = query.order('stock', { ascending: false }).limit(10);
       } else {
-        // Búsqueda general
+        // Búsqueda general por término
         query = query.or(`marca.ilike.%${searchTerm}%,modelo.ilike.%${searchTerm}%,color.ilike.%${searchTerm}%`);
       }
       
       const { data, error } = await query
         .order('stock', { ascending: false })
-        .limit(5);
+        .limit(isProductRequest ? 10 : 5);
       
       console.log('📦 Resultados BD:', { found: data?.length || 0, error: error?.message });
       
