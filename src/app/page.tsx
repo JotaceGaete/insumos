@@ -1,14 +1,36 @@
-export const runtime = 'edge';
+export const runtime = "edge";
 
-import Link from 'next/link';
-import ProductGrid from '@/components/ProductGrid';
-import ProductCarousel from '@/components/ProductCarousel';
-import Carousel from '@/components/Carousel';
-import Categorias from '@/components/Categorias';
+import type { Metadata } from "next";
+import Link from "next/link";
+import ProductGrid from "@/components/ProductGrid";
+import ProductCarousel from "@/components/ProductCarousel";
+import Carousel from "@/components/Carousel";
+import Categorias from "@/components/Categorias";
+import HomeSeoContent from "@/components/seo/HomeSeoContent";
+import WhatsAppButton from "@/components/seo/WhatsAppButton";
 // Slides ahora se obtienen desde Supabase directamente (Server Component)
 import { carouselSlides } from '@/lib/carouselData';
 import { supabaseServerUtils } from '@/lib/supabaseUtils';
-import { adaptSupabaseProducts } from '@/lib/productAdapter';
+import { adaptSupabaseProducts } from "@/lib/productAdapter";
+
+export const metadata: Metadata = {
+  title: "Timbres de goma personalizados en Chile",
+  description:
+    "Fabricamos timbres de goma personalizados para empresas y emprendedores en Chile. Diseños rápidos, despacho y excelente calidad.",
+  keywords: [
+    "timbres de goma",
+    "timbres personalizados",
+    "timbre empresa",
+    "timbre RUT Chile",
+  ],
+  robots: { index: true, follow: true },
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "Timbres de goma personalizados en Chile | Artesellos",
+    description:
+      "Fabricamos timbres de goma personalizados para empresas y emprendedores en Chile. Diseños rápidos, despacho y excelente calidad.",
+  },
+};
 
 // Obtener y adaptar productos desde Supabase (server) usando utilidades tipadas
 async function getMyRealProducts() {
@@ -49,10 +71,24 @@ export default async function Home() {
   return (
     <div>
       {/* Carousel Hero Section */}
-      <Carousel 
-        slides={slides} 
-        autoplayInterval={6000}
-      />
+      <Carousel slides={slides} autoplayInterval={6000} />
+
+      <section className="border-b border-gray-100 bg-white py-10">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+            Timbres de goma personalizados en Chile
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-600">
+            Sellos de caucho para empresas, pymes y emprendedores. Calidad de impresión, asesoría y
+            despacho a todo el país.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <WhatsAppButton message="Hola Artesellos, quiero solicitar cotización por WhatsApp para un timbre de goma.">
+              Solicitar cotización por WhatsApp
+            </WhatsAppButton>
+          </div>
+        </div>
+      </section>
 
       {/* Featured Products Section */}
       <section className="py-16 bg-white">
@@ -118,6 +154,8 @@ export default async function Home() {
           </div>
         </div>
       </section>
+
+      <HomeSeoContent />
     </div>
   );
 }

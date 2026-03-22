@@ -36,6 +36,34 @@ export default function Footer() {
                 <Link href="/contacto" className="hover:text-white transition-colors">
                   Contacto
                 </Link>
+                <span className="text-gray-700">•</span>
+                <Link href="/blog" className="hover:text-white transition-colors">
+                  Blog
+                </Link>
+              </div>
+              <h3 className="text-sm font-semibold text-white mt-6 mb-2 uppercase tracking-wider">
+                Timbres y sellos
+              </h3>
+              <div className="flex flex-wrap justify-center md:justify-start gap-x-3 gap-y-2 text-xs text-gray-400">
+                <Link href="/timbres-personalizados" className="hover:text-white transition-colors">
+                  Timbres personalizados
+                </Link>
+                <span className="text-gray-700">•</span>
+                <Link href="/timbres-empresa" className="hover:text-white transition-colors">
+                  Timbres empresa
+                </Link>
+                <span className="text-gray-700">•</span>
+                <Link href="/timbre-rut" className="hover:text-white transition-colors">
+                  Timbre RUT
+                </Link>
+                <span className="text-gray-700">•</span>
+                <Link href="/timbres-automaticos" className="hover:text-white transition-colors">
+                  Timbres automáticos
+                </Link>
+                <span className="text-gray-700">•</span>
+                <Link href="/sellos-para-negocios" className="hover:text-white transition-colors">
+                  Sellos para negocios
+                </Link>
               </div>
             </div>
 

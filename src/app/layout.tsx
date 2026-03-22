@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import ClientProviders from "@/components/ClientProviders";
+import { SITE_URL } from "@/lib/seo";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -9,18 +10,36 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Artesellos - Timbres Personalizados",
-  description: "Tienda online de timbres personalizados para todas tus ocasiones especiales. Diseños únicos y de calidad para regalos, invitaciones y celebraciones.",
-  keywords: "timbres personalizados, sellos personalizados, regalos personalizados, artesellos",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Timbres de goma personalizados en Chile | Artesellos",
+    template: "%s | Artesellos",
+  },
+  description:
+    "Fabricamos timbres de goma personalizados para empresas y emprendedores en Chile. Diseños rápidos, despacho y excelente calidad.",
+  keywords: [
+    "timbres de goma",
+    "timbres personalizados",
+    "timbre empresa",
+    "timbre RUT Chile",
+    "sellos Chile",
+  ],
   authors: [{ name: "Artesellos" }],
+  robots: {
+    index: true,
+    follow: true,
+  },
   icons: {
-    icon: "/favicon.svg", // Favicon personalizado de Artesellos
+    icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "Artesellos - Timbres Personalizados",
-    description: "Tienda online de timbres personalizados para todas tus ocasiones especiales.",
+    title: "Timbres de goma personalizados en Chile | Artesellos",
+    description:
+      "Fabricamos timbres de goma personalizados para empresas y emprendedores en Chile.",
     type: "website",
+    url: SITE_URL,
+    locale: "es_CL",
   },
 };
 

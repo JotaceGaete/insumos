@@ -1,4 +1,13 @@
-import Link from 'next/link';
+import type { Metadata } from "next";
+import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Sobre nosotros",
+  description:
+    "Artesellos: timbres personalizados y sellos de goma con taller en la Región del Biobío, Chile.",
+  robots: { index: true, follow: true },
+  alternates: { canonical: "/sobre-nosotros" },
+};
 
 export default function SobreNosotrosPage() {
   return (
