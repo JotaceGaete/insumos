@@ -83,6 +83,20 @@ const sortOptions = [
 // Marcas ficticias (reemplazar con datos reales de Supabase)
 const brands = ['Shiny', 'Trodat', 'Colop', 'Brother', 'Pronto'];
 
+// Preposiciones y artículos que no aportan al filtro
+const STOP_WORDS = new Set([
+  'de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
+  'y', 'o', 'a', 'en', 'que', 'es', 'por', 'con', 'para', 'al', 'se',
+]);
+
+const normalize = (str: string): string =>
+  str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ');
+
 export default function ProductosPage() {
   const [products, setProducts] = useState<ProductType[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -146,11 +160,26 @@ export default function ProductosPage() {
         );
       }
 
-      // Filtrar por búsqueda
-      if (searchTerm) {
-        filteredProducts = filteredProducts.filter(product =>
-          product.name.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+      // Filtrar por búsqueda (nombre, categorías, descripción y tags)
+      if (searchTerm.trim()) {
+        const words = normalize(searchTerm)
+          .split(' ')
+          .filter(w => w.length > 1 && !STOP_WORDS.has(w));
+        if (words.length > 0) {
+          filteredProducts = filteredProducts.filter(product => {
+            const haystack = [
+              product.name,
+              product.description || '',
+              product.short_description || '',
+              ...(product.categories || []).map((c: { name: string }) => c.name),
+              ...(product.tags || []).map((t: { name: string }) => t.name),
+            ]
+              .filter(Boolean)
+              .map(normalize)
+              .join(' ');
+            return words.every(word => haystack.includes(word));
+          });
+        }
       }
 
       // Filtrar por rango de precio
@@ -527,10 +556,14 @@ export default function ProductosPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M9 9l6 3" />
                 </svg>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No se encontraron productos
+                  {searchTerm.trim()
+                    ? 'No encontramos productos para esta búsqueda.'
+                    : 'No se encontraron productos'}
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Intenta ajustar tus filtros o búsqueda.
+                  {searchTerm.trim()
+                    ? `No hay resultados para "${searchTerm.trim()}". Intenta con otras palabras.`
+                    : 'Intenta ajustar tus filtros.'}
                 </p>
                 <button
                   onClick={clearFilters}
