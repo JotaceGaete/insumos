@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Productos",
   description:
-    "Catálogo de timbres y sellos personalizados. Compra en línea con despacho en Chile.",
+    "Catálogo de insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/productos" },
 };

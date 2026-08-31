@@ -12,31 +12,30 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Timbres de goma personalizados en Chile | Artesellos",
-    template: "%s | Artesellos",
+    default: "INSUMOS | Materias primas para crear",
+    template: "%s | INSUMOS",
   },
   description:
-    "Fabricamos timbres de goma personalizados para empresas y emprendedores en Chile. Diseños rápidos, despacho y excelente calidad.",
+    "Insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
   keywords: [
-    "timbres de goma",
-    "timbres personalizados",
-    "timbre empresa",
-    "timbre RUT Chile",
-    "sellos Chile",
+    "insumos para velas",
+    "insumos para jabones",
+    "materias primas",
+    "packaging",
   ],
-  authors: [{ name: "Artesellos" }],
+  authors: [{ name: "INSUMOS" }],
   robots: {
     index: true,
     follow: true,
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/favicon-insumos.svg",
+    shortcut: "/favicon-insumos.svg",
   },
   openGraph: {
-    title: "Timbres de goma personalizados en Chile | Artesellos",
+    title: "INSUMOS | Materias primas para crear",
     description:
-      "Fabricamos timbres de goma personalizados para empresas y emprendedores en Chile.",
+      "Insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
     type: "website",
     url: SITE_URL,
     locale: "es_CL",

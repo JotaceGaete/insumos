@@ -4,6 +4,7 @@ import { createInsumosSupabaseAdmin } from '@/features/shared/server/supabase';
 import type { ProductStatus } from '../types';
 import type { InventoryMovementType } from '../types';
 import { assertInventoryMovementConvention } from '@/features/inventory/movementRules';
+import { slugify } from '../slug';
 
 export interface CategoryInput {
   name: string;
@@ -86,10 +87,11 @@ function assertVariantQuantities(input: Pick<VariantInput, 'quantityValue' | 'lo
 export async function createCategory(input: CategoryInput) {
   await requireCatalogManager();
   assertText(input.name, 'Nombre');
-  assertText(input.slug, 'Slug');
+  const slug = slugify(input.slug?.trim() ? input.slug : input.name);
+  assertText(slug, 'Slug');
   const admin = createInsumosSupabaseAdmin();
   const { data, error } = await admin.from('categories').insert({
-    name: input.name.trim(), slug: input.slug.trim(), parent_id: input.parentId || null,
+    name: input.name.trim(), slug, parent_id: input.parentId || null,
     description: input.description || null, image_path: input.imagePath || null,
     sort_order: input.sortOrder || 0, is_active: input.isActive !== false,
   }).select().single();
@@ -102,7 +104,7 @@ export async function updateCategory(id: string, input: Partial<CategoryInput>) 
   const admin = createInsumosSupabaseAdmin();
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) { assertText(input.name, 'Nombre'); patch.name = input.name.trim(); }
-  if (input.slug !== undefined) { assertText(input.slug, 'Slug'); patch.slug = input.slug.trim(); }
+  if (input.slug !== undefined) { const slug = slugify(input.slug); assertText(slug, 'Slug'); patch.slug = slug; }
   if (input.parentId !== undefined) patch.parent_id = input.parentId;
   if (input.description !== undefined) patch.description = input.description;
   if (input.imagePath !== undefined) patch.image_path = input.imagePath;
@@ -122,10 +124,11 @@ export async function deleteCategory(id: string) {
 export async function createProduct(input: ProductInput) {
   await requireCatalogManager();
   assertText(input.name, 'Nombre');
-  assertText(input.slug, 'Slug');
+  const slug = slugify(input.slug?.trim() ? input.slug : input.name);
+  assertText(slug, 'Slug');
   const admin = createInsumosSupabaseAdmin();
   const { data, error } = await admin.from('products').insert({
-    name: input.name.trim(), slug: input.slug.trim(), category_id: input.categoryId || null,
+    name: input.name.trim(), slug, category_id: input.categoryId || null,
     short_description: input.shortDescription || null, description: input.description || null,
     status: input.status || 'draft', is_featured: input.isFeatured === true, brand: input.brand || null,
     seo_title: input.seoTitle || null, seo_description: input.seoDescription || null,
@@ -139,7 +142,7 @@ export async function updateProduct(id: string, input: Partial<ProductInput>) {
   const admin = createInsumosSupabaseAdmin();
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) { assertText(input.name, 'Nombre'); patch.name = input.name.trim(); }
-  if (input.slug !== undefined) { assertText(input.slug, 'Slug'); patch.slug = input.slug.trim(); }
+  if (input.slug !== undefined) { const slug = slugify(input.slug); assertText(slug, 'Slug'); patch.slug = slug; }
   if (input.categoryId !== undefined) patch.category_id = input.categoryId;
   if (input.shortDescription !== undefined) patch.short_description = input.shortDescription;
   if (input.description !== undefined) patch.description = input.description;

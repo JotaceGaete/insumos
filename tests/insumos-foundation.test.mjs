@@ -208,6 +208,26 @@ test('public product listing is isolated from legacy commerce and uses foundatio
   assert.doesNotMatch(catalog, /woocommerce|@\/lib\/supabase|NEXT_PUBLIC_SUPABASE/);
 });
 
+test('slugify normalizes accents, spaces and casing into a url-safe slug', async () => {
+  const { slugify } = await loadTypeScript('src/features/catalog/slug.ts');
+  assert.equal(slugify('Cera de Coco'), 'cera-de-coco');
+  assert.equal(slugify('Ácido Esteárico'), 'acido-estearico');
+  assert.equal(slugify('Envases 100 ml'), 'envases-100-ml');
+  assert.equal(slugify('  Envases   100 ml  '), 'envases-100-ml');
+  assert.equal(slugify('cera de coco'), 'cera-de-coco');
+  assert.equal(slugify('--Piña/Ñandú--'), 'pina-nandu');
+  assert.doesNotMatch(slugify('Producto con  Espacios'), /\s/);
+});
+
+test('catalog mutations normalize product and category slugs through the shared helper before persisting', async () => {
+  const mutations = await readFile(new URL('src/features/catalog/server/mutations.ts', root), 'utf8');
+  assert.match(mutations, /import \{ slugify \} from '\.\.\/slug'/);
+  assert.match(mutations, /slugify\(input\.slug\?\.trim\(\) \? input\.slug : input\.name\)/);
+  const slugifyOnUpdateCount = (mutations.match(/const slug = slugify\(input\.slug\);/g) || []).length;
+  assert.equal(slugifyOnUpdateCount, 2);
+  assert.doesNotMatch(mutations, /slug: input\.slug\.trim\(\)/);
+});
+
 test('all migrated public catalog routes stay within the insumos foundation', async () => {
   const pages = await Promise.all([
     'src/app/page.tsx',

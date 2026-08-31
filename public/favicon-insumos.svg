@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <style>
+      .bg { fill: #4F46E5; }
+      .mark { fill: white; font-family: Arial, sans-serif; font-size: 56px; font-weight: 800; }
+    </style>
+  </defs>
+  <rect x="4" y="4" width="92" height="92" rx="22" class="bg"/>
+  <text x="50" y="70" text-anchor="middle" class="mark">I</text>
+</svg>
