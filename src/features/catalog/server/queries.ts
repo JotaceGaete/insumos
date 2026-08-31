@@ -1,4 +1,4 @@
-import type { CatalogCategory, CatalogProduct, ProductVariant } from '../types';
+import type { CatalogCategory, CatalogProduct, ProductMedia, ProductVariant } from '../types';
 import { createInsumosSupabaseServer } from '@/features/shared/server/supabase';
 
 type CategoryRow = {
@@ -16,6 +16,11 @@ type VariantRow = {
   id: string; product_id: string; sku: string; name: string; attributes: Record<string, string> | null;
   unit_label: string | null; quantity_value: number | null; retail_price: number; stock_quantity: number;
   low_stock_threshold: number; min_quantity: number; max_quantity: number | null; is_active: boolean;
+};
+
+type ProductMediaRow = {
+  id: string; product_id: string; variant_id: string | null; storage_path: string; alt_text: string | null;
+  sort_order: number; is_primary: boolean;
 };
 
 const mapCategory = (row: CategoryRow): CatalogCategory => ({
@@ -36,6 +41,18 @@ const mapVariant = (row: VariantRow): ProductVariant => ({
   minQuantity: row.min_quantity, maxQuantity: row.max_quantity, isActive: row.is_active,
 });
 
+const mapProductMedia = (row: ProductMediaRow): ProductMedia => ({
+  id: row.id, productId: row.product_id, variantId: row.variant_id, storagePath: row.storage_path,
+  altText: row.alt_text, sortOrder: row.sort_order, isPrimary: row.is_primary,
+});
+
+export type CatalogProductListing = {
+  product: CatalogProduct;
+  category: CatalogCategory | null;
+  variants: ProductVariant[];
+  media: ProductMedia[];
+};
+
 export async function listCatalogCategories(): Promise<CatalogCategory[]> {
   const supabase = await createInsumosSupabaseServer();
   const { data, error } = await supabase.from('categories').select('*').eq('is_active', true).order('sort_order').order('name');
@@ -55,4 +72,53 @@ export async function listProductVariants(productId: string): Promise<ProductVar
   const { data, error } = await supabase.from('product_variants').select('*').eq('product_id', productId).eq('is_active', true).order('sort_order');
   if (error) throw error;
   return ((data || []) as VariantRow[]).map(mapVariant);
+}
+
+/**
+ * Public listing data comes only from the insumos schema. Variant rows remain
+ * the authority for price and stock; products do not carry either value.
+ */
+export async function listCatalogProductListings(): Promise<CatalogProductListing[]> {
+  const supabase = await createInsumosSupabaseServer();
+  const { data: productRows, error: productsError } = await supabase
+    .from('products')
+    .select('*')
+    .eq('status', 'active')
+    .order('is_featured', { ascending: false })
+    .order('name');
+
+  if (productsError) throw productsError;
+
+  const products = ((productRows || []) as ProductRow[]).map(mapProduct);
+  if (products.length === 0) return [];
+
+  const productIds = products.map((product) => product.id);
+  const [{ data: variantRows, error: variantsError }, { data: mediaRows, error: mediaError }, categories] = await Promise.all([
+    supabase.from('product_variants').select('*').in('product_id', productIds).eq('is_active', true).order('sort_order'),
+    supabase.from('product_media').select('*').in('product_id', productIds).order('is_primary', { ascending: false }).order('sort_order'),
+    listCatalogCategories(),
+  ]);
+
+  if (variantsError) throw variantsError;
+  if (mediaError) throw mediaError;
+
+  const variantsByProduct = new Map<string, ProductVariant[]>();
+  for (const row of (variantRows || []) as VariantRow[]) {
+    const variant = mapVariant(row);
+    variantsByProduct.set(variant.productId, [...(variantsByProduct.get(variant.productId) || []), variant]);
+  }
+
+  const mediaByProduct = new Map<string, ProductMedia[]>();
+  for (const row of (mediaRows || []) as ProductMediaRow[]) {
+    const media = mapProductMedia(row);
+    mediaByProduct.set(media.productId, [...(mediaByProduct.get(media.productId) || []), media]);
+  }
+
+  const categoriesById = new Map(categories.map((category) => [category.id, category]));
+  return products.map((product) => ({
+    product,
+    category: product.categoryId ? categoriesById.get(product.categoryId) || null : null,
+    variants: variantsByProduct.get(product.id) || [],
+    media: mediaByProduct.get(product.id) || [],
+  }));
 }
