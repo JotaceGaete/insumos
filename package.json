@@ -11,6 +11,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "lint:insumos": "node ./node_modules/eslint/bin/eslint.js src/features src/app/api/insumos tests",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "test": "node --test tests/**/*.test.mjs",
     "pages:build": "npx @cloudflare/next-on-pages",
     "deploy": "npm run pages:build && wrangler pages deploy",
     "seed:knowledge": "node ./scripts/seedKnowledge.mjs"
