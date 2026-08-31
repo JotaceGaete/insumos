@@ -41,7 +41,11 @@ export interface ProductVariant {
   retailPrice: number;
   wholesalePrice: number | null;
   costPrice: number | null;
+  // Physical stock on hand — the admin/inventory source of truth. Public
+  // storefront display and purchase limits should use availableStock
+  // instead (stockQuantity minus other buyers' active, unexpired holds).
   stockQuantity: number;
+  availableStock: number;
   lowStockThreshold: number;
   weightGrams: number | null;
   minQuantity: number;

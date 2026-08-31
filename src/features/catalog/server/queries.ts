@@ -35,13 +35,33 @@ const mapProduct = (row: ProductRow): CatalogProduct => ({
   categoryId: row.category_id, brand: row.brand, seoTitle: row.seo_title, seoDescription: row.seo_description,
 });
 
-const mapVariant = (row: VariantRow): ProductVariant => ({
+// availableStock defaults to the physical stock_quantity when no row comes
+// back from variant_available_stock (shouldn't happen — the view left-joins
+// every variant — but a query for a variant with zero physical stock and no
+// reservations is a legitimate case where nothing needs subtracting).
+const mapVariant = (row: VariantRow, availableStock?: number): ProductVariant => ({
   id: row.id, productId: row.product_id, sku: row.sku, name: row.name,
   optionValue: row.option_value, attributes: row.attributes || {}, unit: row.unit, quantityValue: row.quantity_value,
   retailPrice: row.retail_price, wholesalePrice: row.wholesale_price, costPrice: row.cost_price,
-  stockQuantity: row.stock_quantity, lowStockThreshold: row.low_stock_threshold, weightGrams: row.weight_grams,
+  stockQuantity: row.stock_quantity, availableStock: availableStock ?? row.stock_quantity,
+  lowStockThreshold: row.low_stock_threshold, weightGrams: row.weight_grams,
   minQuantity: row.min_quantity, maxQuantity: row.max_quantity, isActive: row.is_active,
 });
+
+type AvailableStockRow = { variant_id: string; available_stock: number };
+
+async function fetchAvailableStockByVariantId(
+  supabase: Awaited<ReturnType<typeof createInsumosSupabaseServer>>,
+  variantIds: string[],
+): Promise<Map<string, number>> {
+  if (variantIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from('variant_available_stock')
+    .select('variant_id, available_stock')
+    .in('variant_id', variantIds);
+  if (error) throw error;
+  return new Map(((data || []) as AvailableStockRow[]).map((row) => [row.variant_id, row.available_stock]));
+}
 
 const mapProductMedia = (row: ProductMediaRow): ProductMedia => ({
   id: row.id, productId: row.product_id, variantId: row.variant_id, storagePath: row.storage_path,
@@ -97,7 +117,9 @@ export async function listProductVariants(productId: string): Promise<ProductVar
   const supabase = await createInsumosSupabaseServer();
   const { data, error } = await supabase.from('product_variants').select('*').eq('product_id', productId).eq('is_active', true).order('sort_order');
   if (error) throw error;
-  return ((data || []) as VariantRow[]).map(mapVariant);
+  const rows = (data || []) as VariantRow[];
+  const availableStockByVariant = await fetchAvailableStockByVariantId(supabase, rows.map((row) => row.id));
+  return rows.map((row) => mapVariant(row, availableStockByVariant.get(row.id)));
 }
 
 export async function getCatalogCategory(slug: string): Promise<CatalogCategory | null> {
@@ -140,9 +162,12 @@ export async function listCatalogProductListings(): Promise<CatalogProductListin
   if (variantsError) throw variantsError;
   if (mediaError) throw mediaError;
 
+  const variantRowList = (variantRows || []) as VariantRow[];
+  const availableStockByVariant = await fetchAvailableStockByVariantId(supabase, variantRowList.map((row) => row.id));
+
   const variantsByProduct = new Map<string, ProductVariant[]>();
-  for (const row of (variantRows || []) as VariantRow[]) {
-    const variant = mapVariant(row);
+  for (const row of variantRowList) {
+    const variant = mapVariant(row, availableStockByVariant.get(row.id));
     variantsByProduct.set(variant.productId, [...(variantsByProduct.get(variant.productId) || []), variant]);
   }
 
@@ -176,10 +201,13 @@ export async function getCatalogProductListing(slug: string): Promise<CatalogPro
   if (variantsError) throw variantsError;
   if (mediaError) throw mediaError;
 
+  const variantRowList = (variantRows || []) as VariantRow[];
+  const availableStockByVariant = await fetchAvailableStockByVariantId(supabase, variantRowList.map((row) => row.id));
+
   return {
     product,
     category: categoryRow ? mapCategory(categoryRow as CategoryRow) : null,
-    variants: ((variantRows || []) as VariantRow[]).map(mapVariant),
+    variants: variantRowList.map((row) => mapVariant(row, availableStockByVariant.get(row.id))),
     media: ((mediaRows || []) as ProductMediaRow[]).map(mapProductMedia),
   };
 }

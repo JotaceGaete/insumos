@@ -26,8 +26,8 @@ export function ProductDetail({ listing }: { listing: CatalogProductListing }) {
   const selectedVariant = listing.variants.find((variant) => variant.id === selectedVariantId) || null;
   const selectedMedia = listing.media.find((media) => media.id === selectedMediaId) || listing.media.find((media) => media.isPrimary) || listing.media[0];
   const imageUrl = selectedMedia ? getProductMediaPublicUrl(selectedMedia.storagePath) : null;
-  const inStock = (selectedVariant?.stockQuantity || 0) > 0;
-  const maxQuantity = selectedVariant ? Math.max(selectedVariant.stockQuantity, 0) : 0;
+  const inStock = (selectedVariant?.availableStock || 0) > 0;
+  const maxQuantity = selectedVariant ? Math.max(selectedVariant.availableStock, 0) : 0;
 
   useEffect(() => {
     setQuantity(1);
@@ -56,7 +56,7 @@ export function ProductDetail({ listing }: { listing: CatalogProductListing }) {
       quantityValue: selectedVariant.quantityValue,
       // Snapshot for display only — the server recalculates price at checkout.
       unitPrice: selectedVariant.retailPrice,
-      stockAvailable: selectedVariant.stockQuantity,
+      stockAvailable: selectedVariant.availableStock,
     });
     setQuantity(1);
     setJustAdded(true);
@@ -100,7 +100,7 @@ export function ProductDetail({ listing }: { listing: CatalogProductListing }) {
             {selectedVariant && <div className="mt-6 rounded-xl bg-insumos-cream p-4">
               <p className="text-2xl font-bold text-insumos-forest">{formatPrice(selectedVariant.retailPrice)}</p>
               <p className="mt-1 text-sm text-stone-600">SKU: {selectedVariant.sku}</p>
-              <p className={`mt-3 text-sm font-semibold ${inStock ? 'text-insumos-sage' : 'text-stone-600'}`}>{inStock ? `${selectedVariant.stockQuantity} unidades disponibles` : 'Sin stock'}</p>
+              <p className={`mt-3 text-sm font-semibold ${inStock ? 'text-insumos-sage' : 'text-stone-600'}`}>{inStock ? `${selectedVariant.availableStock} unidades disponibles` : 'Sin stock'}</p>
             </div>}
 
             {inStock && (

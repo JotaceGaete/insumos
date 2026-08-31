@@ -21,7 +21,7 @@ export function ProductCard({ listing }: { listing: CatalogProductListing }) {
     (lowest, variant) => (lowest === null || variant.retailPrice < lowest ? variant.retailPrice : lowest),
     null,
   );
-  const hasStock = variants.some((variant) => variant.stockQuantity > 0);
+  const hasStock = variants.some((variant) => variant.availableStock > 0);
   const primaryMedia = media.find((item) => item.isPrimary) || media[0];
   const imageUrl = primaryMedia ? getProductMediaPublicUrl(primaryMedia.storagePath) : null;
 

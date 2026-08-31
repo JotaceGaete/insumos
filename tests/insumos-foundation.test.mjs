@@ -15,6 +15,8 @@ const productMediaStorageMigrationPath = new URL('supabase/migrations/2026083100
 // with the same schema history as production.
 const checkoutMigrationPath = new URL('supabase/migrations/20260831194938_insumos_checkout_orders.sql', root);
 const checkoutFixMigrationPath = new URL('supabase/migrations/20260831195354_insumos_checkout_fix_for_update_outer_join.sql', root);
+const reservationsMigrationPath = new URL('supabase/migrations/20260831202550_insumos_inventory_reservations.sql', root);
+const reservationsFixMigrationPath = new URL('supabase/migrations/20260831202912_insumos_inventory_reservations_fix_ambiguous_columns.sql', root);
 
 async function loadTypeScript(relativePath) {
   const source = await readFile(new URL(relativePath, root), 'utf8');
@@ -304,7 +306,9 @@ test('public product listing is isolated from legacy commerce and uses foundatio
   assert.doesNotMatch(catalog, legacyPattern);
   assert.match(card, /getProductMediaPublicUrl/);
   assert.match(card, /variant\.retailPrice/);
-  assert.match(card, /variant\.stockQuantity/);
+  // "Sin stock" badge reflects availableStock (net of active reservations),
+  // not raw stockQuantity — see the dedicated availableStock test below.
+  assert.match(card, /variant\.availableStock/);
   assert.match(card, /href=\{`\/producto\/\$\{product\.slug\}/);
   assert.doesNotMatch(card, legacyPattern);
 });
@@ -354,7 +358,10 @@ test('all migrated public catalog routes stay within the insumos foundation', as
   assert.match(pages[3], /getCatalogCategory/);
   assert.match(productDetail, /selectedVariantId/);
   assert.match(productDetail, /selectedVariant\.retailPrice/);
-  assert.match(productDetail, /selectedVariant\.stockQuantity/);
+  // Public product detail limits/displays by availableStock, not raw
+  // stockQuantity, since the inventory-reservations stage — see the
+  // dedicated availableStock test below for the full rationale.
+  assert.match(productDetail, /selectedVariant\.availableStock|selectedVariant\?\.availableStock/);
   assert.match(productDetail, /getProductMediaPublicUrl/);
 });
 
@@ -572,4 +579,279 @@ test('the /carrito checkout CTA only renders when the cart has items, and links 
   const ctaIndex = cartPage.indexOf('Continuar al checkout');
   assert.ok(emptyStateIndex >= 0 && ctaIndex > emptyStateIndex, 'the empty-cart early return must appear before the checkout CTA');
   assert.match(cartPage, /href="\/finalizar-compra"/);
+});
+
+// ============================================================================
+// Inventory reservations: order/payment states, 15-minute holds, expiry,
+// release, and reservation -> sale conversion. Mercado Pago is not connected;
+// confirm_order_paid is a landing point for a future webhook only.
+// ============================================================================
+
+test('orders.status and orders.payment_status are locked down to the defined state sets', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  assert.match(sql, /check \(status in \('pending', 'awaiting_payment', 'paid', 'fulfilled', 'cancelled'\)\)/);
+  assert.match(sql, /check \(payment_status in \('pending', 'approved', 'rejected', 'cancelled', 'refunded'\)\)/);
+});
+
+test('inventory_reservations table has the required fields, constraints and indexes', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  assert.match(sql, /create type public\.reservation_status as enum \('active', 'released', 'converted', 'expired'\)/);
+  assert.match(sql, /create table if not exists public\.inventory_reservations/);
+  assert.match(sql, /order_id uuid not null references public\.orders\(id\) on delete cascade/);
+  assert.match(sql, /variant_id uuid not null references public\.product_variants\(id\) on delete restrict/);
+  assert.match(sql, /quantity integer not null check \(quantity > 0\)/);
+  assert.match(sql, /status public\.reservation_status not null default 'active'/);
+  assert.match(sql, /expires_at timestamptz not null/);
+  assert.match(sql, /inventory_reservations_order_id_idx/);
+  assert.match(sql, /inventory_reservations_variant_id_idx/);
+  assert.match(sql, /inventory_reservations_active_variant_idx[\s\S]*?where status = 'active'/);
+  assert.match(sql, /inventory_reservations_active_expires_at_idx[\s\S]*?where status = 'active'/);
+});
+
+test('inventory_reservations has RLS enabled with no public read policy — buyers only reach it through the SECURITY DEFINER RPCs', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  assert.match(sql, /alter table public\.inventory_reservations enable row level security/);
+  assert.match(sql, /catalog managers manage inventory reservations/);
+  assert.doesNotMatch(sql, /create policy "[^"]*"\s*\n\s*on public\.inventory_reservations[\s\S]{0,200}using \(true\)/);
+});
+
+test('variant_available_stock: stock_quantity minus only active, unexpired reservations, exposed publicly as a derived number', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const viewMatch = sql.match(/create or replace view public\.variant_available_stock as[\s\S]*?;/);
+  assert.ok(viewMatch, 'variant_available_stock view not found');
+  const view = viewMatch[0];
+  assert.match(view, /pv\.stock_quantity - coalesce\(r\.reserved_quantity, 0\) as available_stock/);
+  // Reservations are only netted out while status = 'active' AND not yet
+  // expired — released/converted/expired reservations (or an active one
+  // whose time is already up) must not still count against availability.
+  assert.match(view, /where status = 'active' and expires_at > now\(\)/);
+  assert.match(sql, /grant select on public\.variant_available_stock to anon, authenticated;/);
+});
+
+test('reserve_order_inventory validates the order via confirmation_token, rejects paid/cancelled orders, and locks variants before checking available_stock', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.reserve_order_inventory[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'reserve_order_inventory not found');
+  const fn = fnMatch[0];
+  assert.match(fn, /v_order\.confirmation_token is null or v_order\.confirmation_token <> p_confirmation_token/);
+  assert.match(fn, /v_order\.status in \('paid', 'fulfilled'\)/);
+  assert.match(fn, /v_order\.status = 'cancelled'/);
+  assert.match(fn, /for update of pv/);
+  assert.match(fn, /rec\.quantity > rec\.available_stock/);
+  assert.match(fn, /not rec\.is_active or rec\.product_status <> 'active'/);
+});
+
+test('reserve_order_inventory creates no reservation at all if any single item in a multi-item order falls short — no partial reservations', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.reserve_order_inventory[\s\S]*?\n\$\$;/);
+  const fn = fnMatch[0];
+  // The validation loop (which can raise and abort) must appear textually
+  // before the insert — every item is checked before anything is written.
+  const loopIndex = fn.indexOf('for rec in');
+  const insertIndex = fn.indexOf('insert into public.inventory_reservations');
+  assert.ok(loopIndex >= 0 && insertIndex > loopIndex, 'validation loop must run before any reservation is inserted');
+  // One INSERT ... SELECT over every order_items row — either all rows are
+  // written in the same statement or none are (no per-item insert inside
+  // the validation loop that could partially commit).
+  assert.doesNotMatch(fn.slice(loopIndex, insertIndex), /insert into public\.inventory_reservations/);
+});
+
+test('reserve_order_inventory is idempotent: a second call while an active, unexpired reservation exists reuses it and does not extend expires_at', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.reserve_order_inventory[\s\S]*?\n\$\$;/);
+  const fn = fnMatch[0];
+  const reuseMatch = fn.match(/if exists \([\s\S]*?status = 'active' and expires_at > now\(\)[\s\S]*?\) then\s*return query[\s\S]*?return;\s*end if;/);
+  assert.ok(reuseMatch, 'idempotent reuse branch not found');
+  assert.doesNotMatch(reuseMatch[0], /update public\.inventory_reservations set expires_at/);
+  assert.doesNotMatch(reuseMatch[0], /v_expires_at :=/);
+});
+
+test('create_pending_order now validates available_stock (net of other active reservations), not raw stock_quantity, while still never reserving anything itself', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.create_pending_order[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'updated create_pending_order not found');
+  const fn = fnMatch[0];
+  assert.match(fn, /pv\.stock_quantity - coalesce\(\(\s*select sum\(r\.quantity\) from public\.inventory_reservations r/);
+  assert.match(fn, /rec\.quantity > rec\.available_stock/);
+  assert.doesNotMatch(fn, /insert into public\.inventory_reservations/);
+  assert.doesNotMatch(fn, /status = 'awaiting_payment'/);
+});
+
+test('expire_inventory_reservations only touches active, past-due reservations, never modifies stock_quantity, and never cancels an order already paid/fulfilled', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.expire_inventory_reservations[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'expire_inventory_reservations not found');
+  const fn = fnMatch[0];
+  assert.match(fn, /where status = 'active' and expires_at <= now\(\)/);
+  assert.match(fn, /set status = 'expired'/);
+  assert.match(fn, /set status = 'cancelled', payment_status = 'cancelled'[\s\S]*?where id = rec\.order_id and status not in \('paid', 'fulfilled'\)/);
+  assert.doesNotMatch(fn, /set stock_quantity/);
+  assert.doesNotMatch(fn, /insert into public\.inventory_movements/);
+});
+
+test('expire_inventory_reservations and confirm_order_paid are restricted to service_role — never callable by anon or authenticated', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  for (const fn of ['expire_inventory_reservations()', 'confirm_order_paid(uuid)']) {
+    assert.match(sql, new RegExp(`revoke all on function public\\.${fn.replace(/[()]/g, '\\$&')} from public;`));
+    assert.match(sql, new RegExp(`revoke all on function public\\.${fn.replace(/[()]/g, '\\$&')} from anon;`));
+    assert.match(sql, new RegExp(`revoke all on function public\\.${fn.replace(/[()]/g, '\\$&')} from authenticated;`));
+    assert.match(sql, new RegExp(`grant execute on function public\\.${fn.replace(/[()]/g, '\\$&')} to service_role;`));
+  }
+});
+
+test('release_order_inventory only releases active reservations, is proof-gated by confirmation_token, never touches converted reservations or stock_quantity, and refuses a paid order', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.release_order_inventory[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'release_order_inventory not found');
+  const fn = fnMatch[0];
+  assert.match(fn, /v_order\.confirmation_token is null or v_order\.confirmation_token <> p_confirmation_token/);
+  assert.match(fn, /v_order\.status in \('paid', 'fulfilled'\)/);
+  assert.match(fn, /where order_id = p_order_id and status = 'active'/);
+  assert.match(fn, /set status = 'released', released_at = now\(\)/);
+  assert.doesNotMatch(fn, /set stock_quantity/);
+  // Deliberately does not touch order.status/payment_status — a future
+  // reject/cancel flow decides the order's fate, not this primitive.
+  assert.doesNotMatch(fn, /update public\.orders set status/);
+  assert.match(sql, /grant execute on function public\.release_order_inventory\(uuid, text, text\) to anon, authenticated;/);
+});
+
+test('confirm_order_paid is idempotent: a second confirmation for an already-paid order returns early without decrementing stock or creating a second movement', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.confirm_order_paid[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'confirm_order_paid not found');
+  const fn = fnMatch[0];
+  const earlyReturnIndex = fn.indexOf("if v_order.status = 'paid' then");
+  const decrementIndex = fn.indexOf('set stock_quantity = stock_quantity -');
+  assert.ok(earlyReturnIndex >= 0 && decrementIndex > earlyReturnIndex, 'the already-paid early return must appear before the stock decrement');
+  // The 4th column of the RETURNS TABLE is already_confirmed — this branch
+  // returns `true` for it, the fresh-conversion path at the end returns `false`.
+  assert.match(fn.slice(earlyReturnIndex, earlyReturnIndex + 200), /select v_order\.id, v_order\.status, v_order\.payment_status, true;/);
+  assert.match(fn, /select p_order_id, 'paid'::text, 'approved'::text, false;/);
+  // Locking the order row itself (`select ... for update`) is what makes a
+  // second, concurrent call see status = 'paid' and take this branch
+  // instead of racing the decrement — no separate uniqueness constraint
+  // is needed for idempotency.
+  assert.match(fn, /select \* into v_order from public\.orders where id = p_order_id for update/);
+});
+
+test('confirm_order_paid requires a still-active, unexpired reservation, decrements stock exactly once per variant, writes exactly one sale movement per variant, and converts (never releases/expires) the reservation', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.confirm_order_paid[\s\S]*?\n\$\$;/);
+  const fn = fnMatch[0];
+  assert.match(fn, /status = 'active' and expires_at > now\(\)/);
+  // Locks BOTH the reservation row and the variant row — locking only pv
+  // (as an earlier draft did) left a race window where a concurrent
+  // expire_inventory_reservations sweep could expire this exact reservation
+  // between the pre-check and the stock decrement; see the in-loop recheck.
+  assert.match(fn, /for update of r, pv/);
+  assert.match(fn, /rec\.reservation_status <> 'active' or rec\.reservation_expires_at <= now\(\)/);
+  assert.match(fn, /v_reservation_count <> v_item_count/);
+  assert.match(fn, /set stock_quantity = stock_quantity - rec\.quantity/);
+  assert.match(fn, /'sale', -rec\.quantity/);
+  assert.match(fn, /set status = 'converted', converted_at = now\(\)/);
+  assert.match(fn, /set status = 'paid', payment_status = 'approved'/);
+  // created_by is nullable on inventory_movements (verified against the
+  // foundation migration) — a system/webhook-originated movement has no
+  // authenticated user to attribute it to.
+  assert.match(fn, /created_by\s*\n\s*\) values \([\s\S]*?, null\s*\n\s*\);/);
+});
+
+test('confirm_order_paid is race-safe against a concurrent expiry sweep: locking the reservation row itself (not just the variant) means it always sees the sweep\'s real outcome instead of silently overwriting it', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.confirm_order_paid[\s\S]*?\n\$\$;/);
+  const fn = fnMatch[0];
+  // The recheck must happen inside the FOR UPDATE loop, after the lock is
+  // acquired — not only in the earlier count-based pre-check, which runs
+  // before any lock is held and so cannot be race-safe on its own.
+  const lockIndex = fn.indexOf('for update of r, pv');
+  const recheckIndex = fn.indexOf("rec.reservation_status <> 'active' or rec.reservation_expires_at <= now()");
+  const decrementIndex = fn.indexOf('set stock_quantity = stock_quantity -');
+  assert.ok(lockIndex >= 0 && recheckIndex > lockIndex && decrementIndex > recheckIndex,
+    'lock -> recheck-under-lock -> decrement must appear in that order');
+});
+
+test('a reservation is never both a physical stock decrement and a sale decrement: only confirm_order_paid touches stock_quantity, reserve/release/expire never do', async () => {
+  for (const path of [reservationsMigrationPath]) {
+    const sql = await readFile(path, 'utf8');
+    for (const name of ['reserve_order_inventory', 'release_order_inventory', 'expire_inventory_reservations']) {
+      const fnMatch = sql.match(new RegExp(`create or replace function public\\.${name}[\\s\\S]*?\\n\\$\\$;`));
+      assert.ok(fnMatch, `${name} not found`);
+      assert.doesNotMatch(fnMatch[0], /set stock_quantity/);
+    }
+  }
+});
+
+test('reservation/checkout functions lock variant rows before validating (FOR UPDATE), so a concurrent order cannot oversell the same variant', async () => {
+  const sql = await readFile(reservationsMigrationPath, 'utf8');
+  // confirm_order_paid additionally locks the reservation row itself (`r`) —
+  // see the dedicated race-safety test above for why `pv` alone isn't enough there.
+  const lockingFunctions = { reserve_order_inventory: /for update of pv/, confirm_order_paid: /for update of r, pv/, create_pending_order: /for update of pv/ };
+  for (const [name, pattern] of Object.entries(lockingFunctions)) {
+    const fnMatch = sql.match(new RegExp(`create or replace function public\\.${name}[\\s\\S]*?\\n\\$\\$;`));
+    assert.ok(fnMatch, `${name} not found`);
+    assert.match(fnMatch[0], pattern, `${name} must lock its rows`);
+  }
+});
+
+test('the catalog layer exposes availableStock (physical stock minus active reservations) alongside stockQuantity, and the public storefront uses it — not the admin panel', async () => {
+  const types = await readFile(new URL('src/features/catalog/types.ts', root), 'utf8');
+  assert.match(types, /availableStock: number/);
+  assert.match(types, /stockQuantity: number/);
+
+  const queries = await readFile(new URL('src/features/catalog/server/queries.ts', root), 'utf8');
+  assert.match(queries, /variant_available_stock/);
+  assert.match(queries, /fetchAvailableStockByVariantId/);
+
+  const card = await readFile(new URL('src/features/catalog/components/ProductCard.tsx', root), 'utf8');
+  assert.match(card, /variant\.availableStock > 0/);
+  assert.doesNotMatch(card, /variant\.stockQuantity/);
+
+  const detail = await readFile(new URL('src/features/catalog/components/ProductDetail.tsx', root), 'utf8');
+  assert.match(detail, /selectedVariant\?\.availableStock/);
+  assert.match(detail, /stockAvailable: selectedVariant\.availableStock/);
+  assert.doesNotMatch(detail, /selectedVariant\.stockQuantity|selectedVariant\?\.stockQuantity/);
+
+  // Admin's inventory management must keep showing/editing physical stock —
+  // this stage does not touch the admin panel.
+  const editor = await readFile(new URL('src/features/admin/components/ProductEditor.tsx', root), 'utf8');
+  assert.match(editor, /stockQuantity/);
+});
+
+test('the original reservations migration is preserved with its real applied bug: bare column references that collide with RETURNS TABLE output columns, fixed only by a separate follow-up migration', async () => {
+  const original = await readFile(reservationsMigrationPath, 'utf8');
+  const fix = await readFile(reservationsFixMigrationPath, 'utf8');
+  // reserve_order_inventory's RETURNS TABLE declares an `expires_at` output
+  // column; PL/pgSQL treats it as an implicitly-declared variable for the
+  // whole function body, so this bare reference (no table alias) is exactly
+  // the ambiguity that made every call fail on first live use — preserved
+  // here unqualified, matching what was actually first applied.
+  assert.match(original, /select 1 from public\.inventory_reservations\s*\n\s*where order_id = p_order_id and status = 'active' and expires_at > now\(\)/);
+  // confirm_order_paid's RETURNS TABLE declares order_id/status output
+  // columns; same class of bug, also preserved unqualified here.
+  assert.match(original, /select count\(\*\) into v_item_count from public\.order_items where order_id = p_order_id;/);
+  assert.match(original, /where order_id = p_order_id and status = 'active' and expires_at > now\(\);/);
+
+  // The fix migration only replaces the two affected functions — it must
+  // not redeclare the table/index/view/other functions the first migration
+  // already created.
+  assert.doesNotMatch(fix, /create table if not exists public\.inventory_reservations/);
+  assert.doesNotMatch(fix, /create or replace view public\.variant_available_stock/);
+  assert.doesNotMatch(fix, /create or replace function public\.release_order_inventory/);
+  assert.doesNotMatch(fix, /create or replace function public\.expire_inventory_reservations/);
+  assert.doesNotMatch(fix, /create or replace function public\.create_pending_order/);
+});
+
+test('the fix migration table-qualifies every reference that collided with a RETURNS TABLE output column name, in both affected functions', async () => {
+  const fix = await readFile(reservationsFixMigrationPath, 'utf8');
+  const reserveMatch = fix.match(/create or replace function public\.reserve_order_inventory[\s\S]*?\n\$\$;/);
+  assert.ok(reserveMatch, 'reserve_order_inventory not found in fix migration');
+  assert.match(reserveMatch[0], /select 1 from public\.inventory_reservations ir\s*\n\s*where ir\.order_id = p_order_id and ir\.status = 'active' and ir\.expires_at > now\(\)/);
+
+  const confirmMatch = fix.match(/create or replace function public\.confirm_order_paid[\s\S]*?\n\$\$;/);
+  assert.ok(confirmMatch, 'confirm_order_paid not found in fix migration');
+  assert.match(confirmMatch[0], /from public\.order_items oi where oi\.order_id = p_order_id/);
+  assert.match(confirmMatch[0], /from public\.inventory_reservations ir\s*\n\s*where ir\.order_id = p_order_id and ir\.status = 'active' and ir\.expires_at > now\(\)/);
+  // The race-safety fix from the previous round (locking the reservation
+  // row itself, not just the variant) must survive this fix untouched.
+  assert.match(confirmMatch[0], /for update of r, pv/);
 });
