@@ -34,12 +34,16 @@ export interface ProductVariant {
   productId: UUID;
   sku: string;
   name: string;
+  optionValue: string | null;
   attributes: Record<string, string>;
-  unitLabel: string | null;
+  unit: string | null;
   quantityValue: number | null;
   retailPrice: number;
+  wholesalePrice: number | null;
+  costPrice: number | null;
   stockQuantity: number;
   lowStockThreshold: number;
+  weightGrams: number | null;
   minQuantity: number;
   maxQuantity: number | null;
   isActive: boolean;

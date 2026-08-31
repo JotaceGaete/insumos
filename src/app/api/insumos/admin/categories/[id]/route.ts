@@ -6,7 +6,15 @@ type Context = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, { params }: Context) {
   try {
     const { id } = await params;
-    return NextResponse.json({ category: await updateCategory(id, await request.json()) });
+    const body = await request.json();
+    return NextResponse.json({ category: await updateCategory(id, {
+      name: body.name,
+      slug: body.slug,
+      parentId: body.parent_id,
+      description: body.description,
+      isActive: body.is_active,
+      sortOrder: body.sort_order,
+    }) });
   } catch (error) {
     return NextResponse.json({ message: error instanceof Error ? error.message : 'Error interno.' }, { status: 400 });
   }

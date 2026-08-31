@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function middleware() {
-  // Middleware simplificado - sin autenticación de usuario
-  // Solo para futuras funcionalidades si es necesario
+export function middleware(request: NextRequest) {
+  // The legacy Artesellos admin API has no place in the independent store.
+  // Block it before its historical bypasses or credentials can be evaluated.
+  if (request.nextUrl.pathname.startsWith('/api/admin/')) {
+    return NextResponse.json({ message: 'API administrativa heredada deshabilitada.' }, { status: 410 });
+  }
   return NextResponse.next()
 }
 

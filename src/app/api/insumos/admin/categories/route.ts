@@ -18,7 +18,15 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    return NextResponse.json({ category: await createCategory(await request.json()) }, { status: 201 });
+    const body = await request.json();
+    return NextResponse.json({ category: await createCategory({
+      name: body.name,
+      slug: body.slug,
+      parentId: body.parent_id,
+      description: body.description,
+      isActive: body.is_active,
+      sortOrder: body.sort_order,
+    }) }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ message: error instanceof Error ? error.message : 'Error interno.' }, { status: 400 });
   }

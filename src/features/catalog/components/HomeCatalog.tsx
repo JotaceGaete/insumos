@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { CatalogProductListing } from '@/features/catalog/server/queries';
+import { getProductMediaPublicUrl } from '@/features/catalog/productMedia';
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('es-CL', {
@@ -10,10 +11,7 @@ function formatPrice(price: number) {
 }
 
 function getMediaUrl(storagePath: string | undefined) {
-  if (!storagePath) return null;
-  return storagePath.startsWith('https://') || storagePath.startsWith('http://') || storagePath.startsWith('/')
-    ? storagePath
-    : null;
+  return storagePath ? getProductMediaPublicUrl(storagePath) : null;
 }
 
 function ProductCard({ listing }: { listing: CatalogProductListing }) {
@@ -30,7 +28,6 @@ function ProductCard({ listing }: { listing: CatalogProductListing }) {
     <article className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
       <div className="relative aspect-[4/3] bg-stone-100">
         {imageUrl ? (
-          // Product media may be an absolute public URL or an already-resolved local path.
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={primaryMedia?.altText || product.name} className="h-full w-full object-cover" />
         ) : (
@@ -50,9 +47,7 @@ function ProductCard({ listing }: { listing: CatalogProductListing }) {
           {lowestPrice === null ? 'Sin formatos disponibles' : `Desde ${formatPrice(lowestPrice)}`}
         </p>
         {variants.length > 1 && <p className="mt-1 text-sm text-stone-500">{variants.length} formatos disponibles</p>}
-        <Link href={`/productos/${product.slug}`} className="mt-5 inline-flex rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700">
-          Ver opciones
-        </Link>
+        <Link href={`/producto/${product.slug}`} className="mt-5 inline-flex rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700">Ver producto</Link>
       </div>
     </article>
   );

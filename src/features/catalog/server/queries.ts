@@ -14,8 +14,9 @@ type ProductRow = {
 
 type VariantRow = {
   id: string; product_id: string; sku: string; name: string; attributes: Record<string, string> | null;
-  unit_label: string | null; quantity_value: number | null; retail_price: number; stock_quantity: number;
-  low_stock_threshold: number; min_quantity: number; max_quantity: number | null; is_active: boolean;
+  option_value: string | null; unit: string | null; quantity_value: number | null; retail_price: number;
+  wholesale_price: number | null; cost_price: number | null; stock_quantity: number; low_stock_threshold: number;
+  weight_grams: number | null; min_quantity: number; max_quantity: number | null; is_active: boolean;
 };
 
 type ProductMediaRow = {
@@ -36,8 +37,9 @@ const mapProduct = (row: ProductRow): CatalogProduct => ({
 
 const mapVariant = (row: VariantRow): ProductVariant => ({
   id: row.id, productId: row.product_id, sku: row.sku, name: row.name,
-  attributes: row.attributes || {}, unitLabel: row.unit_label, quantityValue: row.quantity_value,
-  retailPrice: row.retail_price, stockQuantity: row.stock_quantity, lowStockThreshold: row.low_stock_threshold,
+  optionValue: row.option_value, attributes: row.attributes || {}, unit: row.unit, quantityValue: row.quantity_value,
+  retailPrice: row.retail_price, wholesalePrice: row.wholesale_price, costPrice: row.cost_price,
+  stockQuantity: row.stock_quantity, lowStockThreshold: row.low_stock_threshold, weightGrams: row.weight_grams,
   minQuantity: row.min_quantity, maxQuantity: row.max_quantity, isActive: row.is_active,
 });
 
@@ -72,6 +74,18 @@ export async function listProductVariants(productId: string): Promise<ProductVar
   const { data, error } = await supabase.from('product_variants').select('*').eq('product_id', productId).eq('is_active', true).order('sort_order');
   if (error) throw error;
   return ((data || []) as VariantRow[]).map(mapVariant);
+}
+
+export async function getCatalogCategory(slug: string): Promise<CatalogCategory | null> {
+  const supabase = await createInsumosSupabaseServer();
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapCategory(data as CategoryRow) : null;
 }
 
 /**
@@ -121,4 +135,27 @@ export async function listCatalogProductListings(): Promise<CatalogProductListin
     variants: variantsByProduct.get(product.id) || [],
     media: mediaByProduct.get(product.id) || [],
   }));
+}
+
+export async function getCatalogProductListing(slug: string): Promise<CatalogProductListing | null> {
+  const product = await getCatalogProduct(slug);
+  if (!product) return null;
+
+  const supabase = await createInsumosSupabaseServer();
+  const [{ data: categoryRow, error: categoryError }, { data: variantRows, error: variantsError }, { data: mediaRows, error: mediaError }] = await Promise.all([
+    product.categoryId ? supabase.from('categories').select('*').eq('id', product.categoryId).eq('is_active', true).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    supabase.from('product_variants').select('*').eq('product_id', product.id).eq('is_active', true).order('sort_order'),
+    supabase.from('product_media').select('*').eq('product_id', product.id).order('is_primary', { ascending: false }).order('sort_order'),
+  ]);
+
+  if (categoryError) throw categoryError;
+  if (variantsError) throw variantsError;
+  if (mediaError) throw mediaError;
+
+  return {
+    product,
+    category: categoryRow ? mapCategory(categoryRow as CategoryRow) : null,
+    variants: ((variantRows || []) as VariantRow[]).map(mapVariant),
+    media: ((mediaRows || []) as ProductMediaRow[]).map(mapProductMedia),
+  };
 }

@@ -8,7 +8,10 @@ export const runtime = 'nodejs';
 export async function GET() {
   try {
     await requireCatalogManager();
-    const { data, error } = await (await createInsumosSupabaseServer()).from('products').select('*').order('created_at', { ascending: false });
+    const { data, error } = await (await createInsumosSupabaseServer())
+      .from('products')
+      .select('*, categories(id, name), product_variants(id, name, sku, retail_price, stock_quantity, is_active, sort_order)')
+      .order('created_at', { ascending: false });
     if (error) throw error;
     return NextResponse.json({ products: data || [] });
   } catch (error) {

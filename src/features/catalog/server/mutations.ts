@@ -32,12 +32,16 @@ export interface VariantInput {
   productId: string;
   sku: string;
   name: string;
+  optionValue?: string | null;
   attributes?: Record<string, string>;
-  unitLabel?: string | null;
+  unit?: string | null;
   quantityValue?: number | null;
   retailPrice: number;
+  wholesalePrice?: number | null;
+  costPrice?: number | null;
   initialStock?: number;
   lowStockThreshold?: number;
+  weightGrams?: number | null;
   minQuantity?: number;
   maxQuantity?: number | null;
   isActive?: boolean;
@@ -52,7 +56,13 @@ function assertPrice(value: number) {
   if (!Number.isInteger(value) || value < 0) throw new Error('El precio debe ser un entero no negativo en CLP.');
 }
 
-function assertVariantQuantities(input: Pick<VariantInput, 'quantityValue' | 'lowStockThreshold' | 'minQuantity' | 'maxQuantity'>) {
+function assertOptionalPrice(value: number | null | undefined, field: string) {
+  if (value !== undefined && value !== null && (!Number.isInteger(value) || value < 0)) {
+    throw new Error(`${field} debe ser un entero no negativo en CLP.`);
+  }
+}
+
+function assertVariantQuantities(input: Pick<VariantInput, 'quantityValue' | 'lowStockThreshold' | 'minQuantity' | 'maxQuantity' | 'weightGrams'>) {
   if (input.quantityValue !== undefined && input.quantityValue !== null && input.quantityValue <= 0) {
     throw new Error('El formato de la variante debe ser mayor a cero.');
   }
@@ -67,6 +77,9 @@ function assertVariantQuantities(input: Pick<VariantInput, 'quantityValue' | 'lo
   }
   if (input.minQuantity !== undefined && input.maxQuantity !== undefined && input.maxQuantity !== null && input.maxQuantity < input.minQuantity) {
     throw new Error('La cantidad máxima no puede ser menor a la mínima.');
+  }
+  if (input.weightGrams !== undefined && input.weightGrams !== null && (!Number.isInteger(input.weightGrams) || input.weightGrams < 0)) {
+    throw new Error('El peso debe ser un entero no negativo en gramos o quedar vacío.');
   }
 }
 
@@ -152,13 +165,17 @@ export async function createVariant(input: VariantInput) {
   assertText(input.sku, 'SKU');
   assertText(input.name, 'Nombre de variante');
   assertPrice(input.retailPrice);
+  assertOptionalPrice(input.wholesalePrice, 'El precio mayorista');
+  assertOptionalPrice(input.costPrice, 'El costo');
   assertVariantQuantities(input);
   const admin = createInsumosSupabaseAdmin();
   const { data, error } = await admin.from('product_variants').insert({
-    product_id: input.productId, sku: input.sku.trim(), name: input.name.trim(), attributes: input.attributes || {},
-    unit_label: input.unitLabel || null, quantity_value: input.quantityValue || null, retail_price: input.retailPrice,
+    product_id: input.productId, sku: input.sku.trim(), name: input.name.trim(), option_value: input.optionValue || null,
+    attributes: input.attributes || {}, unit: input.unit || null, quantity_value: input.quantityValue || null,
+    retail_price: input.retailPrice, wholesale_price: input.wholesalePrice ?? null, cost_price: input.costPrice ?? null,
     stock_quantity: 0, low_stock_threshold: input.lowStockThreshold || 0, min_quantity: input.minQuantity || 1,
-    max_quantity: input.maxQuantity || null, is_active: input.isActive !== false, sort_order: input.sortOrder || 0,
+    max_quantity: input.maxQuantity || null, weight_grams: input.weightGrams ?? null,
+    is_active: input.isActive !== false, sort_order: input.sortOrder || 0,
   }).select().single();
   if (error) throw error;
   if (input.initialStock && input.initialStock > 0) {
@@ -174,11 +191,15 @@ export async function updateVariant(id: string, input: Partial<Omit<VariantInput
   const patch: Record<string, unknown> = {};
   if (input.sku !== undefined) { assertText(input.sku, 'SKU'); patch.sku = input.sku.trim(); }
   if (input.name !== undefined) { assertText(input.name, 'Nombre de variante'); patch.name = input.name.trim(); }
+  if (input.optionValue !== undefined) patch.option_value = input.optionValue;
   if (input.attributes !== undefined) patch.attributes = input.attributes;
-  if (input.unitLabel !== undefined) patch.unit_label = input.unitLabel;
+  if (input.unit !== undefined) patch.unit = input.unit;
   if (input.quantityValue !== undefined) patch.quantity_value = input.quantityValue;
   if (input.retailPrice !== undefined) { assertPrice(input.retailPrice); patch.retail_price = input.retailPrice; }
+  if (input.wholesalePrice !== undefined) { assertOptionalPrice(input.wholesalePrice, 'El precio mayorista'); patch.wholesale_price = input.wholesalePrice; }
+  if (input.costPrice !== undefined) { assertOptionalPrice(input.costPrice, 'El costo'); patch.cost_price = input.costPrice; }
   if (input.lowStockThreshold !== undefined) patch.low_stock_threshold = input.lowStockThreshold;
+  if (input.weightGrams !== undefined) patch.weight_grams = input.weightGrams;
   if (input.minQuantity !== undefined) patch.min_quantity = input.minQuantity;
   if (input.maxQuantity !== undefined) patch.max_quantity = input.maxQuantity;
   if (input.isActive !== undefined) patch.is_active = input.isActive;

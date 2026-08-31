@@ -1,20 +1,15 @@
-import { ReactNode } from 'react'
-import AdminSidebar from '@/components/admin/AdminSidebar'
-import AdminProtection from '@/components/AdminProtection'
+import { ReactNode } from 'react';
+import { redirect } from 'next/navigation';
+import { requireCatalogManager } from '@/features/auth/server/authorization';
+import { AdminShell } from '@/features/admin/components/AdminShell';
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  return (
-    <AdminProtection>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex gap-6">
-          <AdminSidebar />
-          <div className="flex-1">
-            {children}
-          </div>
-        </div>
-      </div>
-    </AdminProtection>
-  )
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  try {
+    await requireCatalogManager();
+  } catch {
+    redirect('/acceso-admin');
+  }
+  return <AdminShell>{children}</AdminShell>;
 }
 
 
