@@ -1,12 +1,15 @@
 import 'server-only';
 import { createInsumosSupabaseAdmin } from '@/features/shared/server/supabase';
-import type { OrderConfirmationDetail, OrderConfirmationLine } from '../types';
+import type { CheckoutBillingData, OrderConfirmationDetail, OrderConfirmationLine } from '../types';
+import type { BillingDocumentType, PreferredCarrier, ShippingPolicy } from '../shipping';
 
 type OrderRow = {
   id: string; customer_name: string; customer_email: string; customer_phone: string | null;
   status: string; payment_status: string; subtotal: number; shipping_total: number;
   discount_total: number; total: number; shipping_address: Record<string, unknown> | null;
   notes: string | null; created_at: string;
+  shipping_policy: string; preferred_carrier: string | null; billing_document_type: string;
+  billing_data: Record<string, unknown> | null;
 };
 
 type OrderItemRow = {
@@ -21,11 +24,11 @@ type OrderItemRow = {
  * the order id and its random confirmation_token. Knowing the id alone
  * (e.g. by guessing or enumerating) is not enough to see anyone's order.
  */
-// This gates a page carrying personal data (name, email, address), so a
-// lookup failure of any kind — wrong token, a transient DB error, a schema
-// mismatch — must fail to "not found" rather than surface a stack trace.
-// Genuine problems still go to the server log; the visitor only ever sees
-// the same 404 as a made-up order id.
+// This gates a page carrying personal data (name, email, address, and when
+// invoiced, RUT/business name), so a lookup failure of any kind — wrong
+// token, a transient DB error, a schema mismatch — must fail to "not found"
+// rather than surface a stack trace. Genuine problems still go to the
+// server log; the visitor only ever sees the same 404 as a made-up order id.
 export async function getOrderConfirmation(orderId: string, token: string): Promise<OrderConfirmationDetail | null> {
   if (!orderId || !token) return null;
   try {
@@ -41,7 +44,7 @@ async function fetchOrderConfirmation(orderId: string, token: string): Promise<O
 
   const { data: orderRow, error: orderError } = await admin
     .from('orders')
-    .select('id, customer_name, customer_email, customer_phone, status, payment_status, subtotal, shipping_total, discount_total, total, shipping_address, notes, created_at')
+    .select('id, customer_name, customer_email, customer_phone, status, payment_status, subtotal, shipping_total, discount_total, total, shipping_address, notes, created_at, shipping_policy, preferred_carrier, billing_document_type, billing_data')
     .eq('id', orderId)
     .eq('confirmation_token', token)
     .maybeSingle();
@@ -70,6 +73,10 @@ async function fetchOrderConfirmation(orderId: string, token: string): Promise<O
     shippingAddress: (order.shipping_address as unknown as OrderConfirmationDetail['shippingAddress']) || null,
     notes: order.notes,
     createdAt: order.created_at,
+    shippingPolicy: order.shipping_policy as ShippingPolicy,
+    preferredCarrier: order.preferred_carrier as PreferredCarrier | null,
+    billingDocumentType: order.billing_document_type as BillingDocumentType,
+    billingData: (order.billing_data as unknown as CheckoutBillingData) || null,
     items: ((itemRows || []) as OrderItemRow[]).map((row): OrderConfirmationLine => ({
       productId: row.product_id,
       variantId: row.variant_id,

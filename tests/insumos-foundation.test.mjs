@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
@@ -17,15 +18,44 @@ const checkoutMigrationPath = new URL('supabase/migrations/20260831194938_insumo
 const checkoutFixMigrationPath = new URL('supabase/migrations/20260831195354_insumos_checkout_fix_for_update_outer_join.sql', root);
 const reservationsMigrationPath = new URL('supabase/migrations/20260831202550_insumos_inventory_reservations.sql', root);
 const reservationsFixMigrationPath = new URL('supabase/migrations/20260831202912_insumos_inventory_reservations_fix_ambiguous_columns.sql', root);
+// Placeholder filename, not applied yet — will be renamed to match whatever
+// version Supabase actually assigns once approved and applied, same as
+// every migration before it in this feature.
+const checkoutV2MigrationPath = new URL('supabase/migrations/20260831225244_insumos_checkout_v2_shipping_billing.sql', root);
 
-async function loadTypeScript(relativePath) {
-  const source = await readFile(new URL(relativePath, root), 'utf8');
+// Transpiles and executes a TS module in an isolated vm context — not a
+// real module system, so relative `import`s that survive transpilation
+// (i.e. anything that isn't type-only) become `require(...)` calls this
+// sandbox must resolve itself. moduleCache both makes that recursion work
+// and avoids re-transpiling a shared dependency (e.g. shipping.ts) once per
+// importer.
+const moduleCache = new Map();
+
+function loadModuleSync(fileUrl) {
+  if (moduleCache.has(fileUrl.href)) return moduleCache.get(fileUrl.href);
+  const source = readFileSync(fileUrl, 'utf8');
   const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const outputModule = { exports: {} };
-  vm.runInNewContext(compiled, { module: outputModule, exports: outputModule.exports });
+  moduleCache.set(fileUrl.href, outputModule.exports);
+  const sandbox = {
+    module: outputModule,
+    exports: outputModule.exports,
+    require: (specifier) => {
+      if (!specifier.startsWith('.')) {
+        throw new Error(`Test sandbox cannot resolve non-relative import "${specifier}" (from ${fileUrl.pathname})`);
+      }
+      const candidate = specifier.endsWith('.ts') ? specifier : `${specifier}.ts`;
+      return loadModuleSync(new URL(candidate, fileUrl));
+    },
+  };
+  vm.runInNewContext(compiled, sandbox);
   return outputModule.exports;
+}
+
+async function loadTypeScript(relativePath) {
+  return loadModuleSync(new URL(relativePath, root));
 }
 
 const migration = () => readFile(migrationPath, 'utf8');
@@ -404,15 +434,18 @@ test('checkout rejects absurd quantities and merges duplicate variantId lines se
 
 test('checkout requires complete buyer and shipping data with a real email and bounded text lengths', async () => {
   const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
-  const validAddress = { region: 'Metropolitana', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  const validAddress = { region: 'Región Metropolitana de Santiago', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  const base = { phone: '+56911111111', shippingAddress: validAddress, preferredCarrier: 'starken' };
   assert.throws(() => assertValidCustomer(null), /obligatorios/);
-  assert.throws(() => assertValidCustomer({ fullName: '', email: 'a@b.com', phone: '+56911111111', shippingAddress: validAddress }), /nombre/);
-  assert.throws(() => assertValidCustomer({ fullName: 'Test Client TEST', email: 'not-an-email', phone: '+56911111111', shippingAddress: validAddress }), /email no es válido/);
-  assert.throws(() => assertValidCustomer({ fullName: 'Test Client TEST', email: 'a@b.com', phone: '+56911111111', shippingAddress: { ...validAddress, comuna: '' } }), /comuna/);
-  assert.throws(() => assertValidCustomer({ fullName: 'a'.repeat(200), email: 'a@b.com', phone: '+56911111111', shippingAddress: validAddress }), /demasiado largo/);
-  const ok = assertValidCustomer({ fullName: ' Test Client TEST ', email: ' a@b.com ', phone: '+56911111111', shippingAddress: validAddress, deliveryNotes: '  ' });
+  assert.throws(() => assertValidCustomer({ ...base, fullName: '', email: 'a@b.com' }), /nombre/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Test Client TEST', email: 'not-an-email' }), /email no es válido/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Test Client TEST', email: 'a@b.com', shippingAddress: { ...validAddress, comuna: '' } }), /comuna/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'a'.repeat(200), email: 'a@b.com' }), /demasiado largo/);
+  const ok = assertValidCustomer({ ...base, fullName: ' Test Client TEST ', email: ' a@b.com ', deliveryNotes: '  ' });
   assert.equal(ok.fullName, 'Test Client TEST');
   assert.equal(ok.deliveryNotes, null);
+  assert.equal(ok.billingDocumentType, 'boleta');
+  assert.equal(ok.billingData, null);
 });
 
 test('the checkout item contract never carries price, name or stock — only variantId and quantity leave the browser', async () => {
@@ -854,4 +887,242 @@ test('the fix migration table-qualifies every reference that collided with a RET
   // The race-safety fix from the previous round (locking the reservation
   // row itself, not just the variant) must survive this fix untouched.
   assert.match(confirmMatch[0], /for update of r, pv/);
+});
+
+// ============================================================================
+// Checkout V2: free-shipping threshold, region/comuna cascading selects,
+// carrier preference, boleta/factura with billing data. Mercado Pago,
+// transport-carrier APIs and electronic invoicing stay out of scope.
+// ============================================================================
+
+test('region/comuna dataset: every region has comunas, and the required cross-checks resolve to the right region', async () => {
+  const { CHILE_REGIONS, isValidRegion, isValidRegionComuna } = await loadTypeScript('src/features/checkout/regionComuna.ts');
+  assert.equal(CHILE_REGIONS.length, 16);
+  for (const region of CHILE_REGIONS) {
+    assert.ok(region.comunas.length > 0, `${region.name} has no comunas`);
+  }
+  assert.ok(isValidRegion('Región del Biobío'));
+  assert.ok(isValidRegionComuna('Región del Biobío', 'Coronel'));
+  assert.ok(isValidRegionComuna('Región del Biobío', 'Concepción'));
+  assert.ok(isValidRegionComuna('Región Metropolitana de Santiago', 'Santiago'));
+  assert.ok(isValidRegionComuna('Región de Magallanes y de la Antártica Chilena', 'Punta Arenas'));
+  // Cross-checks: these comunas must NOT resolve under the wrong region.
+  assert.equal(isValidRegionComuna('Región Metropolitana de Santiago', 'Coronel'), false);
+  assert.equal(isValidRegionComuna('Región del Biobío', 'Santiago'), false);
+  assert.equal(isValidRegion('Región Inventada'), false);
+});
+
+test('region/comuna dataset: every comuna belongs to exactly one region across the whole dataset (346 total, no duplicates)', async () => {
+  const { CHILE_REGIONS } = await loadTypeScript('src/features/checkout/regionComuna.ts');
+  const seen = new Map();
+  for (const region of CHILE_REGIONS) {
+    for (const comuna of region.comunas) {
+      assert.ok(!seen.has(comuna), `comuna "${comuna}" appears under both "${seen.get(comuna)}" and "${region.name}"`);
+      seen.set(comuna, region.name);
+    }
+  }
+  assert.equal(seen.size, 346);
+});
+
+test('RUT validation: accepts dotted/undotted/dashless formats that share a valid check digit, and rejects a wrong check digit or garbage', async () => {
+  const { isValidRut, normalizeRut, formatRut } = await loadTypeScript('src/features/checkout/rut.ts');
+  assert.equal(isValidRut('12.345.678-5'), true);
+  assert.equal(isValidRut('12345678-5'), true);
+  assert.equal(isValidRut('123456785'), true);
+  assert.equal(isValidRut('11.111.111-1'), true);
+  assert.equal(isValidRut('11.111.111-2'), false);
+  assert.equal(isValidRut('abc'), false);
+  assert.equal(isValidRut(''), false);
+  assert.equal(normalizeRut('12.345.678-5'), '123456785');
+  assert.equal(formatRut('123456785'), '12.345.678-5');
+});
+
+test('shipping policy boundary: 49999 is receiver_pays, exactly 50000 and 50001 are both free', async () => {
+  const { computeShippingPolicy, amountUntilFreeShipping, FREE_SHIPPING_THRESHOLD } = await loadTypeScript('src/features/checkout/shipping.ts');
+  assert.equal(FREE_SHIPPING_THRESHOLD, 50000);
+  assert.equal(computeShippingPolicy(49999), 'receiver_pays');
+  assert.equal(computeShippingPolicy(50000), 'free');
+  assert.equal(computeShippingPolicy(50001), 'free');
+  assert.equal(amountUntilFreeShipping(32500), 17500);
+  assert.equal(amountUntilFreeShipping(50000), 0);
+  assert.equal(amountUntilFreeShipping(60000), 0);
+});
+
+test('carrier and billing-document-type allowlists reject anything outside their fixed sets', async () => {
+  const { isValidCarrier, isValidBillingDocumentType, PREFERRED_CARRIERS, BILLING_DOCUMENT_TYPES } = await loadTypeScript('src/features/checkout/shipping.ts');
+  // Spread into a plain array first: PREFERRED_CARRIERS/BILLING_DOCUMENT_TYPES
+  // come from the vm-sandboxed module (a separate realm), and deepEqual
+  // considers cross-realm arrays unequal by prototype even with identical
+  // contents — materializing a main-realm copy sidesteps that.
+  assert.deepEqual([...PREFERRED_CARRIERS], ['starken', 'chilexpress', 'blue_express']);
+  assert.deepEqual([...BILLING_DOCUMENT_TYPES], ['boleta', 'factura']);
+  for (const carrier of PREFERRED_CARRIERS) assert.equal(isValidCarrier(carrier), true);
+  assert.equal(isValidCarrier('correos-de-chile'), false);
+  assert.equal(isValidCarrier(undefined), false);
+  for (const docType of BILLING_DOCUMENT_TYPES) assert.equal(isValidBillingDocumentType(docType), true);
+  assert.equal(isValidBillingDocumentType('invoice'), false);
+});
+
+test('checkout rejects an invalid carrier, an unknown region, and a comuna that does not belong to the given region', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const validAddress = { region: 'Región Metropolitana de Santiago', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  const base = { fullName: 'Test Client', email: 'a@b.com', phone: '+56911111111', shippingAddress: validAddress };
+  assert.throws(() => assertValidCustomer({ ...base, preferredCarrier: 'correos-de-chile' }), /transportista/);
+  assert.throws(() => assertValidCustomer({ ...base, preferredCarrier: undefined }), /transportista/);
+  assert.doesNotThrow(() => assertValidCustomer({ ...base, preferredCarrier: 'starken' }));
+
+  assert.throws(() => assertValidCustomer({ ...base, preferredCarrier: 'starken', shippingAddress: { ...validAddress, region: 'Región Inventada' } }), /región no es válida/);
+  assert.throws(() => assertValidCustomer({ ...base, preferredCarrier: 'starken', shippingAddress: { ...validAddress, comuna: 'Coronel' } }), /no pertenece a la región/);
+});
+
+test('checkout: boleta requires no business data; factura requires a valid RUT, razón social, giro and a valid billing region/comuna', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const validAddress = { region: 'Región Metropolitana de Santiago', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  const base = { fullName: 'Test Client', email: 'a@b.com', phone: '+56911111111', shippingAddress: validAddress, preferredCarrier: 'starken' };
+
+  const boleta = assertValidCustomer({ ...base, billingDocumentType: 'boleta' });
+  assert.equal(boleta.billingData, null);
+
+  const validBilling = {
+    rut: '11.111.111-1', businessName: 'Mi Empresa SPA', businessActivity: 'Venta de insumos',
+    email: 'facturacion@empresa.cl', region: 'Región Metropolitana de Santiago', comuna: 'Providencia', address: 'Av. Siempre Viva', number: '742',
+  };
+
+  assert.throws(() => assertValidCustomer({ ...base, billingDocumentType: 'factura' }), /facturación son obligatorios/);
+  assert.throws(() => assertValidCustomer({ ...base, billingDocumentType: 'factura', billingData: { ...validBilling, rut: '11.111.111-2' } }), /RUT no es válido/);
+  assert.throws(() => assertValidCustomer({ ...base, billingDocumentType: 'factura', billingData: { ...validBilling, businessName: '' } }), /razón social/);
+  assert.throws(() => assertValidCustomer({ ...base, billingDocumentType: 'factura', billingData: { ...validBilling, businessActivity: '' } }), /giro/);
+  assert.throws(() => assertValidCustomer({ ...base, billingDocumentType: 'factura', billingData: { ...validBilling, comuna: 'Coronel' } }), /Facturación/);
+
+  const factura = assertValidCustomer({ ...base, billingDocumentType: 'factura', billingData: validBilling });
+  assert.equal(factura.billingData.rut, '111111111');
+  assert.equal(factura.billingData.businessName, 'Mi Empresa SPA');
+});
+
+test('cl_comunas seed table includes the required cross-checks (Coronel/Concepción → Biobío, Santiago → Metropolitana, Punta Arenas → Magallanes) and totals exactly 346 comunas', async () => {
+  const sql = await readFile(checkoutV2MigrationPath, 'utf8');
+  assert.match(sql, /create table if not exists public\.cl_comunas/);
+  assert.match(sql, /comuna text primary key/);
+  assert.match(sql, /\('Coronel', 'Región del Biobío'\)/);
+  assert.match(sql, /\('Concepción', 'Región del Biobío'\)/);
+  assert.match(sql, /\('Santiago', 'Región Metropolitana de Santiago'\)/);
+  assert.match(sql, /\('Punta Arenas', 'Región de Magallanes y de la Antártica Chilena'\)/);
+  const insertBlock = sql.match(/insert into public\.cl_comunas[\s\S]*?on conflict \(comuna\) do update set region = excluded\.region;/);
+  assert.ok(insertBlock, 'cl_comunas seed insert not found');
+  const rowCount = (insertBlock[0].match(/\(\s*'(?:[^']|'')*',\s*'(?:[^']|'')*'\s*\)/g) || []).length;
+  assert.equal(rowCount, 346);
+});
+
+test('orders gains shipping_policy/preferred_carrier/billing_document_type as CHECK-constrained allowlists, and a table constraint keeps billing_data consistent with billing_document_type', async () => {
+  const sql = await readFile(checkoutV2MigrationPath, 'utf8');
+  assert.match(sql, /add column if not exists shipping_policy text not null default 'receiver_pays'/);
+  assert.match(sql, /check \(shipping_policy in \('free', 'receiver_pays'\)\)/);
+  assert.match(sql, /add column if not exists preferred_carrier text/);
+  assert.match(sql, /check \(preferred_carrier is null or preferred_carrier in \('starken', 'chilexpress', 'blue_express'\)\)/);
+  assert.match(sql, /add column if not exists billing_document_type text not null default 'boleta'/);
+  assert.match(sql, /check \(billing_document_type in \('boleta', 'factura'\)\)/);
+  assert.match(sql, /add column if not exists billing_data jsonb/);
+  assert.match(sql, /add constraint orders_billing_data_matches_document_type/);
+  assert.match(sql, /billing_document_type = 'boleta' and billing_data is null/);
+  assert.match(sql, /billing_document_type = 'factura' and billing_data is not null/);
+});
+
+test('is_valid_rut (SQL) mirrors the TS check-digit algorithm: modulo 11, "K" for remainder 10, "0" for remainder 11', async () => {
+  const sql = await readFile(checkoutV2MigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.is_valid_rut[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'is_valid_rut not found');
+  const fn = fnMatch[0];
+  assert.match(fn, /total := total \+ digit \* multiplier/);
+  assert.match(fn, /remainder := 11 - \(total % 11\)/);
+  assert.match(fn, /when remainder = 10 then 'K'/);
+  assert.match(fn, /when remainder = 11 then '0'/);
+});
+
+test('create_pending_order (V2) computes shipping_policy only from the server-side subtotal — the RPC has no shipping_policy parameter for a client to manipulate — and validates carrier/billing/region against fixed allowlists and cl_comunas', async () => {
+  const sql = await readFile(checkoutV2MigrationPath, 'utf8');
+  assert.match(sql, /drop function if exists public\.create_pending_order\(jsonb, text, text, text, jsonb, text\);/);
+  const fnMatch = sql.match(/create or replace function public\.create_pending_order[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'V2 create_pending_order not found');
+  const fn = fnMatch[0];
+  assert.match(fn, /v_shipping_policy := case when v_subtotal >= 50000 then 'free' else 'receiver_pays' end;/);
+  assert.doesNotMatch(fn, /p_shipping_policy/);
+  assert.match(fn, /p_preferred_carrier is null or p_preferred_carrier not in \('starken', 'chilexpress', 'blue_express'\)/);
+  assert.match(fn, /v_billing_document_type not in \('boleta', 'factura'\)/);
+  assert.match(fn, /not public\.is_valid_rut\(p_billing_data->>'rut'\)/);
+  assert.match(fn, /from public\.cl_comunas\s*\n\s*where comuna = \(p_shipping_address->>'comuna'\)/);
+  assert.match(fn, /from public\.cl_comunas\s*\n\s*where comuna = \(p_billing_data->>'comuna'\)/);
+  assert.match(sql, /grant execute on function public\.create_pending_order\(jsonb, text, text, text, jsonb, text, text, text, jsonb\) to anon, authenticated;/);
+});
+
+test('create_pending_order (V2) keeps shipping_total at 0 and total equal to subtotal regardless of shipping policy', async () => {
+  const sql = await readFile(checkoutV2MigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.create_pending_order[\s\S]*?\n\$\$;/);
+  const fn = fnMatch[0];
+  assert.match(fn, /subtotal, discount_total, shipping_total, total,/);
+  assert.match(fn, /v_subtotal, 0, 0, v_subtotal,/);
+});
+
+test('the Checkout V2 migration stays out of scope: no Mercado Pago integration, no cron, no payment/preference id columns, no transport-carrier API endpoints, no electronic invoicing', async () => {
+  const sql = await readFile(checkoutV2MigrationPath, 'utf8');
+  // The migration's own header comment explains what's deliberately left
+  // out (including the words "Mercado Pago") — that's documentation, not an
+  // integration. Only the executable SQL statements matter here, so
+  // comment lines are stripped before checking for real integration markers.
+  const withoutComments = sql.replace(/^\s*--.*$/gm, '');
+  assert.doesNotMatch(withoutComments, /mercado ?pago|mercadopago/i);
+  assert.doesNotMatch(sql, /pg_cron|cron\.schedule/i);
+  assert.doesNotMatch(sql, /add column[\s\S]{0,40}(payment_id|preference_id)/i);
+  assert.doesNotMatch(sql, /starken\.cl|chilexpress\.cl|blueexpress\.cl|https?:\/\//i);
+  assert.doesNotMatch(sql, /documento tributario electrónico|\bdte\b/i);
+});
+
+test('order confirmation shows document type, preferred carrier label and the correct shipping-policy message, plus business name/RUT only when invoiced', async () => {
+  const page = await readFile(new URL('src/app/pedido/[id]/confirmacion/page.tsx', root), 'utf8');
+  assert.match(page, /order\.billingDocumentType/);
+  assert.match(page, /CARRIER_LABELS\[order\.preferredCarrier\]/);
+  assert.match(page, /order\.shippingPolicy === 'free' \? 'Envío gratis' : 'Envío por pagar'/);
+  assert.match(page, /order\.billingDocumentType === 'factura' && order\.billingData/);
+  assert.match(page, /formatRut\(order\.billingData\.rut\)/);
+  assert.doesNotMatch(page, /Pago exitoso|pago exitoso/);
+});
+
+test('/carrito shows the free-shipping message below subtotal, computed from the shared shipping-policy helper (not a hardcoded threshold)', async () => {
+  const page = await readFile(new URL('src/app/carrito/page.tsx', root), 'utf8');
+  assert.match(page, /computeShippingPolicy\(subtotal\)/);
+  assert.match(page, /Te faltan \{formatPrice\(remainderForFreeShipping\)\} para obtener envío gratis\./);
+  assert.match(page, /¡Tienes envío gratis!/);
+});
+
+test('/finalizar-compra shows the correct free-shipping message and carrier disclaimer copy for both shipping policies', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /¡Tu pedido tiene envío gratis!/);
+  assert.match(page, /Te faltan \{formatPrice\(remainderForFreeShipping\)\} para obtener envío gratis\./);
+  assert.match(page, /despacha por pagar mediante el transportista/);
+  assert.match(page, /Envío gratis mediante uno de nuestros transportistas disponibles/);
+});
+
+test('/finalizar-compra resets the selected comuna whenever región changes, and disables the comuna select until a región is chosen', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /function updateRegion\(region: string\) \{/);
+  assert.match(page, /setForm\(\(current\) => \(\{ \.\.\.current, region, comuna: '' \}\)\)/);
+  assert.match(page, /disabled=\{!form\.region\}/);
+});
+
+test('/finalizar-compra keeps billing address synced to shipping while "usar misma dirección" is checked, and stops syncing once unchecked', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /useSameAddressForBilling/);
+  assert.match(page, /if \(!form\.useSameAddressForBilling\) return;/);
+  assert.match(page, /disabled=\{form\.useSameAddressForBilling\}/);
+});
+
+test('checkout V2 modules (region/comuna, RUT, shipping policy) stay isolated from legacy Artesellos and never hardcode a payment/transport-carrier API endpoint', async () => {
+  const files = await Promise.all([
+    'src/features/checkout/regionComuna.ts',
+    'src/features/checkout/rut.ts',
+    'src/features/checkout/shipping.ts',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/app\/checkout|checkout\/mp|NEXT_PUBLIC_SUPABASE|Mercado ?Pago|mercadopago|starken\.cl|chilexpress\.cl|blueexpress|https?:\/\//i;
+  for (const source of files) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
 });

@@ -1,4 +1,7 @@
-import type { CheckoutCustomerInput, CheckoutItemInput, CheckoutPayload } from './types';
+import type { CheckoutBillingData, CheckoutCustomerInput, CheckoutItemInput, CheckoutPayload } from './types';
+import { isValidRegion, isValidRegionComuna } from './regionComuna';
+import { isValidRut, normalizeRut } from './rut';
+import { isValidBillingDocumentType, isValidCarrier, type BillingDocumentType, type PreferredCarrier } from './shipping';
 
 // Loose but real: the server never trusts this alone — create_pending_order
 // re-validates existence, status and stock. This just rejects obviously
@@ -22,6 +25,9 @@ const MAX_LENGTHS = {
   number: 20,
   unit: 100,
   deliveryNotes: 500,
+  rut: 12,
+  businessName: 160,
+  businessActivity: 160,
 } as const;
 
 function assertText(value: unknown, field: string, maxLength: number, required = true): string {
@@ -32,6 +38,11 @@ function assertText(value: unknown, field: string, maxLength: number, required =
   const trimmed = value.trim();
   if (trimmed.length > maxLength) throw new Error(`${field} es demasiado largo.`);
   return trimmed;
+}
+
+function assertRegionComuna(region: string, comuna: string, context: string) {
+  if (!isValidRegion(region)) throw new Error(`${context}: la región no es válida.`);
+  if (!isValidRegionComuna(region, comuna)) throw new Error(`${context}: la comuna no pertenece a la región seleccionada.`);
 }
 
 /**
@@ -71,6 +82,38 @@ export function normalizeCheckoutItems(rawItems: unknown): CheckoutItemInput[] {
   return Array.from(quantities.entries()).map(([variantId, quantity]) => ({ variantId, quantity }));
 }
 
+function assertValidBillingData(raw: unknown, fallbackAddress: { region: string; comuna: string; address: string; number: string; unit: string | null }): CheckoutBillingData {
+  if (!raw || typeof raw !== 'object') throw new Error('Los datos de facturación son obligatorios para factura.');
+  const input = raw as Record<string, unknown>;
+
+  const rawRut = assertText(input.rut, 'El RUT', MAX_LENGTHS.rut);
+  if (!isValidRut(rawRut)) throw new Error('El RUT no es válido.');
+  const rut = normalizeRut(rawRut);
+
+  const businessName = assertText(input.businessName, 'La razón social', MAX_LENGTHS.businessName);
+  const businessActivity = assertText(input.businessActivity, 'El giro', MAX_LENGTHS.businessActivity);
+  const email = assertText(input.email, 'El email de facturación', MAX_LENGTHS.email);
+  if (!EMAIL_PATTERN.test(email)) throw new Error('El email de facturación no es válido.');
+
+  // "Usar misma dirección de despacho" is a pure client-side convenience —
+  // the server only ever sees the resulting billing address fields, sent
+  // either copied from shipping or entered separately. Either way they're
+  // validated identically here, against the same region/comuna dataset.
+  const region = assertText(input.region, 'La región de facturación', MAX_LENGTHS.region, false) || fallbackAddress.region;
+  const comuna = assertText(input.comuna, 'La comuna de facturación', MAX_LENGTHS.comuna, false) || fallbackAddress.comuna;
+  const address = assertText(input.address, 'La dirección de facturación', MAX_LENGTHS.address, false) || fallbackAddress.address;
+  const number = assertText(input.number, 'El número de facturación', MAX_LENGTHS.number, false) || fallbackAddress.number;
+  const unit = assertText(input.unit, 'La oficina/local/depto de facturación', MAX_LENGTHS.unit, false) || null;
+
+  assertText(region, 'La región de facturación', MAX_LENGTHS.region);
+  assertText(comuna, 'La comuna de facturación', MAX_LENGTHS.comuna);
+  assertText(address, 'La dirección de facturación', MAX_LENGTHS.address);
+  assertText(number, 'El número de facturación', MAX_LENGTHS.number);
+  assertRegionComuna(region, comuna, 'Facturación');
+
+  return { rut, businessName, businessActivity, email, region, comuna, address, number, unit };
+}
+
 export function assertValidCustomer(customer: unknown): CheckoutCustomerInput {
   if (!customer || typeof customer !== 'object') throw new Error('Los datos del comprador son obligatorios.');
   const input = customer as Record<string, unknown>;
@@ -91,10 +134,29 @@ export function assertValidCustomer(customer: unknown): CheckoutCustomerInput {
     number: assertText(address.number, 'El número', MAX_LENGTHS.number),
     unit: assertText(address.unit, 'El departamento/casa', MAX_LENGTHS.unit, false) || null,
   };
+  assertRegionComuna(shippingAddress.region, shippingAddress.comuna, 'Despacho');
 
   const deliveryNotes = assertText(input.deliveryNotes, 'Las indicaciones de entrega', MAX_LENGTHS.deliveryNotes, false) || null;
 
-  return { fullName, email, phone, shippingAddress, deliveryNotes };
+  if (!isValidCarrier(input.preferredCarrier)) {
+    throw new Error('Selecciona un transportista válido.');
+  }
+  const preferredCarrier: PreferredCarrier = input.preferredCarrier;
+
+  // Not sent by the client at all defaults to boleta, matching the UI's
+  // own default — but anything sent must be one of the two real values.
+  const billingDocumentType: BillingDocumentType = input.billingDocumentType === undefined
+    ? 'boleta'
+    : (() => {
+      if (!isValidBillingDocumentType(input.billingDocumentType)) throw new Error('Selecciona un documento tributario válido.');
+      return input.billingDocumentType;
+    })();
+
+  const billingData = billingDocumentType === 'factura'
+    ? assertValidBillingData(input.billingData, shippingAddress)
+    : null;
+
+  return { fullName, email, phone, shippingAddress, deliveryNotes, preferredCarrier, billingDocumentType, billingData };
 }
 
 export function assertValidCheckoutPayload(payload: unknown): CheckoutPayload {

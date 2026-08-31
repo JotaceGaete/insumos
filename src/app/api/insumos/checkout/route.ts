@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       confirmationToken: confirmation.confirmationToken,
       subtotal: confirmation.subtotal,
       total: confirmation.total,
+      shippingPolicy: confirmation.shippingPolicy,
     }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ message: toClientMessage(error) }, { status: 400 });

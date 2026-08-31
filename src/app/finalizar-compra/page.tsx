@@ -1,10 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Truck } from 'lucide-react';
 import { useInsumosCart } from '@/features/cart/CartProvider';
+import { listComunasForRegion, listRegionNames } from '@/features/checkout/regionComuna';
+import {
+  BILLING_DOCUMENT_TYPES,
+  CARRIER_LABELS,
+  FREE_SHIPPING_THRESHOLD,
+  PREFERRED_CARRIERS,
+  amountUntilFreeShipping,
+  computeShippingPolicy,
+  type BillingDocumentType,
+  type PreferredCarrier,
+} from '@/features/checkout/shipping';
+import { isValidRut } from '@/features/checkout/rut';
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(price);
@@ -20,14 +32,32 @@ type CheckoutForm = {
   number: string;
   unit: string;
   deliveryNotes: string;
+  preferredCarrier: PreferredCarrier;
+  billingDocumentType: BillingDocumentType;
+  useSameAddressForBilling: boolean;
+  billingRut: string;
+  businessName: string;
+  businessActivity: string;
+  billingEmail: string;
+  billingRegion: string;
+  billingComuna: string;
+  billingAddress: string;
+  billingNumber: string;
+  billingUnit: string;
 };
 
 const emptyForm: CheckoutForm = {
   fullName: '', email: '', phone: '', region: '', comuna: '', address: '', number: '', unit: '', deliveryNotes: '',
+  preferredCarrier: 'starken',
+  billingDocumentType: 'boleta',
+  useSameAddressForBilling: true,
+  billingRut: '', businessName: '', businessActivity: '', billingEmail: '',
+  billingRegion: '', billingComuna: '', billingAddress: '', billingNumber: '', billingUnit: '',
 };
 
-const inputClass = 'mt-1 w-full rounded-lg border border-insumos-line bg-white px-3 py-2.5 text-sm text-insumos-ink outline-none focus:border-insumos-forest focus:ring-2 focus:ring-insumos-mint';
+const inputClass = 'mt-1 w-full rounded-lg border border-insumos-line bg-white px-3 py-2.5 text-sm text-insumos-ink outline-none focus:border-insumos-forest focus:ring-2 focus:ring-insumos-mint disabled:bg-insumos-cream disabled:text-stone-400';
 const labelClass = 'block text-sm font-semibold text-insumos-ink';
+const REGION_NAMES = listRegionNames();
 
 export default function FinalizarCompraPage() {
   const router = useRouter();
@@ -46,9 +76,52 @@ export default function FinalizarCompraPage() {
     if (hydrated && items.length === 0 && !orderPlaced) router.replace('/carrito');
   }, [hydrated, items.length, orderPlaced, router]);
 
-  function updateField<K extends keyof CheckoutForm>(field: K, value: string) {
+  const shippingPolicy = useMemo(() => computeShippingPolicy(subtotal), [subtotal]);
+  const remainderForFreeShipping = useMemo(() => amountUntilFreeShipping(subtotal), [subtotal]);
+  const comunasForRegion = useMemo(() => listComunasForRegion(form.region), [form.region]);
+  const billingComunasForRegion = useMemo(() => listComunasForRegion(form.billingRegion), [form.billingRegion]);
+  const isFactura = form.billingDocumentType === 'factura';
+
+  function updateField<K extends keyof CheckoutForm>(field: K, value: CheckoutForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
+
+  function updateRegion(region: string) {
+    // Changing region invalidates whatever comuna was picked before —
+    // reset it rather than leave a comuna selected that no longer belongs
+    // to the new region.
+    setForm((current) => ({ ...current, region, comuna: '' }));
+  }
+
+  function updateBillingRegion(region: string) {
+    setForm((current) => ({ ...current, billingRegion: region, billingComuna: '' }));
+  }
+
+  // "Usar misma dirección de despacho": while checked, billing address
+  // fields stay mirrored to shipping — including when the buyer edits
+  // shipping *after* checking the box. Unchecking lets them diverge; the
+  // buyer can always re-check to resync.
+  useEffect(() => {
+    if (!form.useSameAddressForBilling) return;
+    setForm((current) => {
+      if (
+        current.billingRegion === current.region
+        && current.billingComuna === current.comuna
+        && current.billingAddress === current.address
+        && current.billingNumber === current.number
+        && current.billingUnit === current.unit
+      ) return current;
+      return {
+        ...current,
+        billingRegion: current.region,
+        billingComuna: current.comuna,
+        billingAddress: current.address,
+        billingNumber: current.number,
+        billingUnit: current.unit,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.useSameAddressForBilling, form.region, form.comuna, form.address, form.number, form.unit]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -57,6 +130,16 @@ export default function FinalizarCompraPage() {
     if (!form.fullName.trim() || !form.email.trim() || !form.phone.trim() || !form.region.trim() || !form.comuna.trim() || !form.address.trim() || !form.number.trim()) {
       setErrorMessage('Completa todos los campos obligatorios.');
       return;
+    }
+    if (isFactura) {
+      if (!isValidRut(form.billingRut)) {
+        setErrorMessage('Ingresa un RUT válido para la factura.');
+        return;
+      }
+      if (!form.businessName.trim() || !form.businessActivity.trim() || !form.billingEmail.trim() || !form.billingRegion.trim() || !form.billingComuna.trim() || !form.billingAddress.trim() || !form.billingNumber.trim()) {
+        setErrorMessage('Completa todos los datos de facturación.');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -78,6 +161,19 @@ export default function FinalizarCompraPage() {
               unit: form.unit.trim() || null,
             },
             deliveryNotes: form.deliveryNotes.trim() || null,
+            preferredCarrier: form.preferredCarrier,
+            billingDocumentType: form.billingDocumentType,
+            billingData: isFactura ? {
+              rut: form.billingRut.trim(),
+              businessName: form.businessName.trim(),
+              businessActivity: form.businessActivity.trim(),
+              email: form.billingEmail.trim(),
+              region: form.billingRegion.trim(),
+              comuna: form.billingComuna.trim(),
+              address: form.billingAddress.trim(),
+              number: form.billingNumber.trim(),
+              unit: form.billingUnit.trim() || null,
+            } : null,
           },
         }),
       });
@@ -112,10 +208,10 @@ export default function FinalizarCompraPage() {
         <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-insumos-ink sm:text-3xl">Finalizar compra</h1>
 
         <form onSubmit={handleSubmit} className="mt-6 grid gap-8 lg:grid-cols-[1fr_380px] lg:items-start">
-          <div className="space-y-6 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
-            <div>
-              <h2 className="text-base font-bold text-insumos-ink">Datos del cliente</h2>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-6">
+            <div className="space-y-4 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
+              <h2 className="text-base font-bold text-insumos-ink">1. Datos de contacto</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className={labelClass} htmlFor="fullName">Nombre completo</label>
                   <input id="fullName" required maxLength={120} className={inputClass} value={form.fullName} onChange={(event) => updateField('fullName', event.target.value)} />
@@ -131,16 +227,22 @@ export default function FinalizarCompraPage() {
               </div>
             </div>
 
-            <div className="border-t border-insumos-line pt-6">
-              <h2 className="text-base font-bold text-insumos-ink">Datos de entrega</h2>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <div className="space-y-4 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
+              <h2 className="text-base font-bold text-insumos-ink">2. Dirección de despacho</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={labelClass} htmlFor="region">Región</label>
-                  <input id="region" required maxLength={100} className={inputClass} value={form.region} onChange={(event) => updateField('region', event.target.value)} />
+                  <select id="region" required className={inputClass} value={form.region} onChange={(event) => updateRegion(event.target.value)}>
+                    <option value="">Selecciona una región</option>
+                    {REGION_NAMES.map((region) => <option key={region} value={region}>{region}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className={labelClass} htmlFor="comuna">Comuna</label>
-                  <input id="comuna" required maxLength={100} className={inputClass} value={form.comuna} onChange={(event) => updateField('comuna', event.target.value)} />
+                  <select id="comuna" required disabled={!form.region} className={inputClass} value={form.comuna} onChange={(event) => updateField('comuna', event.target.value)}>
+                    <option value="">{form.region ? 'Selecciona una comuna' : 'Elige primero una región'}</option>
+                    {comunasForRegion.map((comuna) => <option key={comuna} value={comuna}>{comuna}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className={labelClass} htmlFor="address">Dirección</label>
@@ -161,9 +263,123 @@ export default function FinalizarCompraPage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-2 rounded-lg bg-insumos-cream px-4 py-3 text-sm text-stone-600">
-              <Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-insumos-sage" aria-hidden />
-              <span>El despacho se coordina por separado y todavía no tiene una tarifa definida. Te contactaremos para confirmarlo.</span>
+            <div className="space-y-3 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
+              <h2 className="text-base font-bold text-insumos-ink">3. Transportista</h2>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {PREFERRED_CARRIERS.map((carrier) => (
+                  <label
+                    key={carrier}
+                    className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      form.preferredCarrier === carrier ? 'border-insumos-forest bg-insumos-mint text-insumos-forest' : 'border-insumos-line text-stone-600 hover:bg-insumos-cream'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="preferredCarrier"
+                      value={carrier}
+                      checked={form.preferredCarrier === carrier}
+                      onChange={() => updateField('preferredCarrier', carrier)}
+                      className="sr-only"
+                    />
+                    {CARRIER_LABELS[carrier]}
+                  </label>
+                ))}
+              </div>
+              <div className="flex items-start gap-2 rounded-lg bg-insumos-cream px-4 py-3 text-sm text-stone-600">
+                <Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-insumos-sage" aria-hidden />
+                {shippingPolicy === 'free' ? (
+                  <span>Envío gratis mediante uno de nuestros transportistas disponibles. Tu preferencia queda registrada, pero ArteInsumos podría usar otro transportista si fuera necesario para completar tu envío.</span>
+                ) : (
+                  <span>Para pedidos menores a {formatPrice(FREE_SHIPPING_THRESHOLD)}, el envío se despacha por pagar mediante el transportista que selecciones.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
+              <h2 className="text-base font-bold text-insumos-ink">4. Documento tributario</h2>
+              <div className="grid grid-cols-2 gap-2">
+                {BILLING_DOCUMENT_TYPES.map((docType) => (
+                  <label
+                    key={docType}
+                    className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold capitalize transition-colors ${
+                      form.billingDocumentType === docType ? 'border-insumos-forest bg-insumos-mint text-insumos-forest' : 'border-insumos-line text-stone-600 hover:bg-insumos-cream'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="billingDocumentType"
+                      value={docType}
+                      checked={form.billingDocumentType === docType}
+                      onChange={() => updateField('billingDocumentType', docType)}
+                      className="sr-only"
+                    />
+                    {docType}
+                  </label>
+                ))}
+              </div>
+
+              {isFactura && (
+                <div className="space-y-4 border-t border-insumos-line pt-4">
+                  <h3 className="text-sm font-bold text-insumos-ink">Datos de facturación</h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className={labelClass} htmlFor="billingRut">RUT</label>
+                      <input id="billingRut" required placeholder="12.345.678-5" maxLength={12} className={inputClass} value={form.billingRut} onChange={(event) => updateField('billingRut', event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="businessName">Razón social</label>
+                      <input id="businessName" required maxLength={160} className={inputClass} value={form.businessName} onChange={(event) => updateField('businessName', event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="businessActivity">Giro</label>
+                      <input id="businessActivity" required maxLength={160} className={inputClass} value={form.businessActivity} onChange={(event) => updateField('businessActivity', event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="billingEmail">Email de facturación</label>
+                      <input id="billingEmail" type="email" required maxLength={200} className={inputClass} value={form.billingEmail} onChange={(event) => updateField('billingEmail', event.target.value)} />
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm font-semibold text-insumos-ink">
+                    <input
+                      type="checkbox"
+                      checked={form.useSameAddressForBilling}
+                      onChange={(event) => updateField('useSameAddressForBilling', event.target.checked)}
+                      className="h-4 w-4 rounded border-insumos-line text-insumos-forest focus:ring-insumos-mint"
+                    />
+                    Usar misma dirección de despacho
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className={labelClass} htmlFor="billingRegion">Región</label>
+                      <select id="billingRegion" required disabled={form.useSameAddressForBilling} className={inputClass} value={form.billingRegion} onChange={(event) => updateBillingRegion(event.target.value)}>
+                        <option value="">Selecciona una región</option>
+                        {REGION_NAMES.map((region) => <option key={region} value={region}>{region}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="billingComuna">Comuna</label>
+                      <select id="billingComuna" required disabled={form.useSameAddressForBilling || !form.billingRegion} className={inputClass} value={form.billingComuna} onChange={(event) => updateField('billingComuna', event.target.value)}>
+                        <option value="">{form.billingRegion ? 'Selecciona una comuna' : 'Elige primero una región'}</option>
+                        {billingComunasForRegion.map((comuna) => <option key={comuna} value={comuna}>{comuna}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="billingAddress">Dirección</label>
+                      <input id="billingAddress" required disabled={form.useSameAddressForBilling} maxLength={200} className={inputClass} value={form.billingAddress} onChange={(event) => updateField('billingAddress', event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="billingNumber">Número</label>
+                      <input id="billingNumber" required disabled={form.useSameAddressForBilling} maxLength={20} className={inputClass} value={form.billingNumber} onChange={(event) => updateField('billingNumber', event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="billingUnit">Oficina/local/depto (opcional)</label>
+                      <input id="billingUnit" disabled={form.useSameAddressForBilling} maxLength={100} className={inputClass} value={form.billingUnit} onChange={(event) => updateField('billingUnit', event.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {errorMessage && (
@@ -211,15 +427,34 @@ export default function FinalizarCompraPage() {
               </div>
               <div className="flex items-center justify-between text-stone-600">
                 <span>Despacho</span>
-                <span>Por coordinar</span>
+                <span className={shippingPolicy === 'free' ? 'font-semibold text-insumos-forest' : ''}>{shippingPolicy === 'free' ? 'GRATIS' : 'Por pagar'}</span>
               </div>
             </div>
+
+            {shippingPolicy === 'free' ? (
+              <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-insumos-mint px-3 py-2 text-xs font-semibold text-insumos-forest">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" aria-hidden />
+                ¡Tu pedido tiene envío gratis!
+              </p>
+            ) : (
+              <div className="mt-3 rounded-lg bg-insumos-cream px-3 py-2.5">
+                <p className="text-xs font-semibold text-insumos-ink">
+                  Te faltan {formatPrice(remainderForFreeShipping)} para obtener envío gratis.
+                </p>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-insumos-line">
+                  <div className="h-full rounded-full bg-insumos-forest transition-all" style={{ width: `${Math.min((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 100)}%` }} />
+                </div>
+              </div>
+            )}
+
             <div className="mt-3 flex items-center justify-between border-t border-insumos-line pt-3 text-base font-extrabold text-insumos-ink">
-              <span>Total productos</span>
+              <span>Total</span>
               <span>{formatPrice(subtotal)}</span>
             </div>
             <p className="mt-3 text-xs text-stone-500">
-              El costo de despacho todavía no está incluido y se sumará al confirmar el envío contigo.
+              {shippingPolicy === 'free'
+                ? 'El envío está incluido en este total.'
+                : 'El costo de despacho se paga aparte, directamente al transportista, y no está incluido en este total.'}
             </p>
           </aside>
         </form>

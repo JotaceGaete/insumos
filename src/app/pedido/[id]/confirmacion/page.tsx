@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { getOrderConfirmation } from '@/features/checkout/server/queries';
+import { CARRIER_LABELS } from '@/features/checkout/shipping';
+import { formatRut } from '@/features/checkout/rut';
 
 type ConfirmationPageProps = {
   params: Promise<{ id: string }>;
@@ -54,6 +56,30 @@ export default async function OrderConfirmationPage({ params, searchParams }: Co
         </div>
 
         <div className="mt-6 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
+          <h2 className="text-base font-bold text-insumos-ink">Despacho y facturación</h2>
+          <dl className="mt-3 grid gap-3 text-sm text-stone-600 sm:grid-cols-2">
+            <div>
+              <dt className="font-semibold text-insumos-ink">Documento</dt>
+              <dd className="capitalize">{order.billingDocumentType}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-insumos-ink">Transportista preferido</dt>
+              <dd>{order.preferredCarrier ? CARRIER_LABELS[order.preferredCarrier] : 'No especificado'}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-insumos-ink">Despacho</dt>
+              <dd>{order.shippingPolicy === 'free' ? 'Envío gratis' : 'Envío por pagar'}</dd>
+            </div>
+            {order.billingDocumentType === 'factura' && order.billingData && (
+              <div>
+                <dt className="font-semibold text-insumos-ink">Facturar a</dt>
+                <dd>{order.billingData.businessName} · {formatRut(order.billingData.rut)}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
           <h2 className="text-base font-bold text-insumos-ink">Productos</h2>
           <ul className="mt-3 space-y-3">
             {order.items.map((item) => (
@@ -74,7 +100,7 @@ export default async function OrderConfirmationPage({ params, searchParams }: Co
             </div>
             <div className="flex items-center justify-between text-stone-600">
               <span>Despacho</span>
-              <span>Por coordinar</span>
+              <span>{order.shippingPolicy === 'free' ? 'Gratis' : 'Por pagar'}</span>
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between border-t border-insumos-line pt-3 text-base font-extrabold text-insumos-ink">
@@ -82,7 +108,9 @@ export default async function OrderConfirmationPage({ params, searchParams }: Co
             <span>{formatPrice(order.total)}</span>
           </div>
           <p className="mt-3 text-xs text-stone-500">
-            El costo de despacho todavía no está incluido y se confirmará contigo por separado.
+            {order.shippingPolicy === 'free'
+              ? 'El envío está incluido en este total.'
+              : 'El costo de despacho se paga aparte, directamente al transportista, y no está incluido en este total.'}
           </p>
         </div>
 

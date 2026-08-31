@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import { CheckCircle2, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { useInsumosCart } from '@/features/cart/CartProvider';
+import { FREE_SHIPPING_THRESHOLD, amountUntilFreeShipping, computeShippingPolicy } from '@/features/checkout/shipping';
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(price);
@@ -10,6 +11,8 @@ function formatPrice(price: number) {
 
 export default function CarritoPage() {
   const { items, subtotal, increment, decrement, removeItem } = useInsumosCart();
+  const shippingPolicy = computeShippingPolicy(subtotal);
+  const remainderForFreeShipping = amountUntilFreeShipping(subtotal);
 
   if (items.length === 0) {
     return (
@@ -110,7 +113,24 @@ export default function CarritoPage() {
             <span>Subtotal</span>
             <span>{formatPrice(subtotal)}</span>
           </div>
-          <p className="mt-2 text-xs text-stone-500">
+
+          {shippingPolicy === 'free' ? (
+            <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-insumos-mint px-3 py-2 text-xs font-semibold text-insumos-forest">
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0" aria-hidden />
+              ¡Tienes envío gratis!
+            </p>
+          ) : (
+            <div className="mt-3 rounded-lg bg-insumos-cream px-3 py-2.5">
+              <p className="text-xs font-semibold text-insumos-ink">
+                Te faltan {formatPrice(remainderForFreeShipping)} para obtener envío gratis.
+              </p>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-insumos-line">
+                <div className="h-full rounded-full bg-insumos-forest transition-all" style={{ width: `${Math.min((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 100)}%` }} />
+              </div>
+            </div>
+          )}
+
+          <p className="mt-3 text-xs text-stone-500">
             El precio final, el stock y los costos de despacho se confirman al finalizar la compra.
           </p>
           <Link
