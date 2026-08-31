@@ -8,6 +8,13 @@ const root = new URL('../', import.meta.url);
 const migrationPath = new URL('supabase/migrations/20260831000100_insumos_foundation.sql', root);
 const commercialVariantMigrationPath = new URL('supabase/migrations/20260831000200_insumos_variant_commercial_fields.sql', root);
 const productMediaStorageMigrationPath = new URL('supabase/migrations/20260831000300_insumos_product_media_storage.sql', root);
+// Two files, matching exactly what was actually applied to the live INSUMOS
+// project (and in the same order): the original migration (bugs included)
+// and the follow-up that fixed them. Kept as two files rather than squashed
+// into one so a fresh project replaying local migrations in order ends up
+// with the same schema history as production.
+const checkoutMigrationPath = new URL('supabase/migrations/20260831194938_insumos_checkout_orders.sql', root);
+const checkoutFixMigrationPath = new URL('supabase/migrations/20260831195354_insumos_checkout_fix_for_update_outer_join.sql', root);
 
 async function loadTypeScript(relativePath) {
   const source = await readFile(new URL(relativePath, root), 'utf8');
@@ -359,4 +366,210 @@ test('the admin panel and its login gate render bare, without the legacy Artesel
   assert.match(clientProviders, /const shell = admin \? \(\s*<>\{children\}<\/>/);
   const adminShell = await readFile(new URL('src/features/admin/components/AdminShell.tsx', root), 'utf8');
   assert.doesNotMatch(adminShell, /Artesellos|ChatInterface|FloatingWhatsApp/);
+});
+
+test('checkout rejects an empty cart and non-integer or zero/negative quantities', async () => {
+  const { normalizeCheckoutItems } = await loadTypeScript('src/features/checkout/validation.ts');
+  assert.throws(() => normalizeCheckoutItems([]), /vacío/);
+  assert.throws(() => normalizeCheckoutItems(null));
+  assert.throws(() => normalizeCheckoutItems('not-an-array'));
+  const variantId = '11111111-1111-1111-1111-111111111111';
+  assert.throws(() => normalizeCheckoutItems([{ variantId, quantity: 0 }]), /entero positivo/);
+  assert.throws(() => normalizeCheckoutItems([{ variantId, quantity: -1 }]), /entero positivo/);
+  assert.throws(() => normalizeCheckoutItems([{ variantId, quantity: 1.5 }]), /entero positivo/);
+  assert.throws(() => normalizeCheckoutItems([{ variantId: 'not-a-uuid', quantity: 1 }]), /variante inválida/);
+});
+
+test('checkout rejects absurd quantities and merges duplicate variantId lines server-side before validating', async () => {
+  const { normalizeCheckoutItems, MAX_ITEM_QUANTITY } = await loadTypeScript('src/features/checkout/validation.ts');
+  const variantId = '11111111-1111-1111-1111-111111111111';
+  assert.throws(() => normalizeCheckoutItems([{ variantId, quantity: MAX_ITEM_QUANTITY + 1 }]), /demasiado alta/);
+  // A client (or a replayed/manipulated request) sending the same variant as
+  // two fragments must be treated as one combined line, exactly like the
+  // client cart reducer's own merge — the server never assumes the caller
+  // already merged correctly.
+  const merged = normalizeCheckoutItems([{ variantId, quantity: 2 }, { variantId, quantity: 3 }]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].quantity, 5);
+  // Splitting a quantity across fragments must not evade the absurd-quantity cap either.
+  assert.throws(() => normalizeCheckoutItems([{ variantId, quantity: MAX_ITEM_QUANTITY }, { variantId, quantity: 1 }]), /demasiado alta/);
+});
+
+test('checkout requires complete buyer and shipping data with a real email and bounded text lengths', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const validAddress = { region: 'Metropolitana', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  assert.throws(() => assertValidCustomer(null), /obligatorios/);
+  assert.throws(() => assertValidCustomer({ fullName: '', email: 'a@b.com', phone: '+56911111111', shippingAddress: validAddress }), /nombre/);
+  assert.throws(() => assertValidCustomer({ fullName: 'Test Client TEST', email: 'not-an-email', phone: '+56911111111', shippingAddress: validAddress }), /email no es válido/);
+  assert.throws(() => assertValidCustomer({ fullName: 'Test Client TEST', email: 'a@b.com', phone: '+56911111111', shippingAddress: { ...validAddress, comuna: '' } }), /comuna/);
+  assert.throws(() => assertValidCustomer({ fullName: 'a'.repeat(200), email: 'a@b.com', phone: '+56911111111', shippingAddress: validAddress }), /demasiado largo/);
+  const ok = assertValidCustomer({ fullName: ' Test Client TEST ', email: ' a@b.com ', phone: '+56911111111', shippingAddress: validAddress, deliveryNotes: '  ' });
+  assert.equal(ok.fullName, 'Test Client TEST');
+  assert.equal(ok.deliveryNotes, null);
+});
+
+test('the checkout item contract never carries price, name or stock — only variantId and quantity leave the browser', async () => {
+  const types = await readFile(new URL('src/features/checkout/types.ts', root), 'utf8');
+  const itemInterface = types.match(/export interface CheckoutItemInput \{[\s\S]*?\}/)[0];
+  assert.doesNotMatch(itemInterface, /price|Price|stock|Stock|name|Name|sku|Sku/);
+  assert.match(itemInterface, /variantId/);
+  assert.match(itemInterface, /quantity/);
+});
+
+test('the checkout mutation calls the session-aware client so auth.uid() can link a logged-in buyer, never the admin client', async () => {
+  const mutations = await readFile(new URL('src/features/checkout/server/mutations.ts', root), 'utf8');
+  assert.match(mutations, /createInsumosSupabaseServer\(\)/);
+  assert.doesNotMatch(mutations, /createInsumosSupabaseAdmin/);
+  assert.match(mutations, /create_pending_order/);
+});
+
+test('checkout error messages are allowlisted: unrecognized Supabase/Postgrest errors never reach the customer verbatim', async () => {
+  const mutations = await readFile(new URL('src/features/checkout/server/mutations.ts', root), 'utf8');
+  assert.match(mutations, /KNOWN_MESSAGE_PATTERNS/);
+  assert.match(mutations, /some\(\(pattern\) => pattern\.test\(raw\)\)/);
+  assert.match(mutations, /No pudimos crear tu pedido\. Intenta nuevamente\./);
+});
+
+test('the checkout route validates the payload before ever calling the order mutation, and never trusts a client-sent price', async () => {
+  const route = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  assert.match(route, /assertValidCheckoutPayload/);
+  assert.match(route, /createPendingOrder/);
+  const validateIndex = route.indexOf('assertValidCheckoutPayload(body)');
+  const createIndex = route.indexOf('createPendingOrder(payload)');
+  assert.ok(validateIndex >= 0 && createIndex > validateIndex, 'validation must run before order creation');
+});
+
+test('the checkout page only clears the cart after the server confirms the order was created, never before or on failure', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  const okCheckIndex = page.indexOf('if (!response.ok)');
+  const clearCartCallIndex = page.indexOf('clearCart();');
+  assert.ok(okCheckIndex >= 0 && clearCartCallIndex > okCheckIndex, 'clearCart() must be reachable only after the ok-check, i.e. after a real success response');
+  assert.match(page, /router\.push\(`\/pedido\/\$\{data\.orderId\}\/confirmacion\?token=/);
+});
+
+test('the checkout page does not bounce a just-placed order back to /carrito via its own empty-cart guard', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /orderPlaced/);
+  assert.match(page, /items\.length === 0 && !orderPlaced/);
+  const setOrderPlacedIndex = page.indexOf('setOrderPlaced(true)');
+  const clearCartCallIndex = page.indexOf('clearCart();');
+  assert.ok(setOrderPlacedIndex >= 0 && setOrderPlacedIndex < clearCartCallIndex, 'orderPlaced must be set before clearCart() triggers the re-render race');
+});
+
+test('the order confirmation page requires a token and never renders payment-success language before a payment provider exists', async () => {
+  const confirmation = await readFile(new URL('src/app/pedido/[id]/confirmacion/page.tsx', root), 'utf8');
+  assert.match(confirmation, /searchParams/);
+  assert.match(confirmation, /if \(!token\) notFound\(\);/);
+  assert.match(confirmation, /getOrderConfirmation\(id, token\)/);
+  assert.doesNotMatch(confirmation, /Pago exitoso|pago exitoso|Payment successful/);
+});
+
+test('order confirmation reads are gated by a random confirmation_token, not by the order id alone, through the service-role client', async () => {
+  const queries = await readFile(new URL('src/features/checkout/server/queries.ts', root), 'utf8');
+  assert.match(queries, /createInsumosSupabaseAdmin\(\)/);
+  assert.match(queries, /\.eq\('confirmation_token', token\)/);
+  const sql = await readFile(checkoutMigrationPath, 'utf8');
+  assert.match(sql, /add column if not exists confirmation_token/);
+  assert.match(sql, /gen_random_bytes\(24\)/);
+});
+
+test('order confirmation lookup fails safe to null (404) on any query error instead of crashing or leaking a stack trace', async () => {
+  const queries = await readFile(new URL('src/features/checkout/server/queries.ts', root), 'utf8');
+  assert.match(queries, /export async function getOrderConfirmation[\s\S]*?try \{[\s\S]*?catch \(error\) \{[\s\S]*?return null;/);
+});
+
+test('create_pending_order revalidates every item against the live catalog and never trusts client-supplied price or names', async () => {
+  const sql = await readFile(checkoutFixMigrationPath, 'utf8');
+  assert.match(sql, /create or replace function public\.create_pending_order/);
+  assert.match(sql, /security definer/);
+  assert.match(sql, /for update of pv/);
+  // Existence can't be checked via a left-join null (Postgres rejects `for
+  // update` on the nullable side of an outer join), so the join is inner
+  // and a missing variant is instead detected by comparing matched vs
+  // requested counts after the loop.
+  assert.match(sql, /join public\.product_variants pv on pv\.id = m\.variant_id/);
+  assert.doesNotMatch(sql, /left join public\.product_variants/);
+  assert.match(sql, /v_matched_count < v_merged_count/);
+  assert.match(sql, /not rec\.is_active/);
+  assert.match(sql, /rec\.product_status <> 'active'/);
+  assert.match(sql, /rec\.quantity < rec\.min_quantity/);
+  assert.match(sql, /rec\.max_quantity is not null and rec\.quantity > rec\.max_quantity/);
+  assert.match(sql, /rec\.quantity > rec\.stock_quantity/);
+  // subtotal/line totals are computed only from the re-fetched retail_price, never from p_items
+  assert.match(sql, /rec\.retail_price \* rec\.quantity/);
+  assert.doesNotMatch(sql, /item->>'unitPrice'|item->>'price'|item->>'productName'/);
+});
+
+test('create_pending_order calls gen_random_bytes schema-qualified, since pgcrypto lives outside the function\'s restricted search_path', async () => {
+  const sql = await readFile(checkoutFixMigrationPath, 'utf8');
+  assert.match(sql, /extensions\.gen_random_bytes\(24\)/);
+  assert.doesNotMatch(sql, /[^.]gen_random_bytes\(24\)/);
+});
+
+test('create_pending_order merges duplicate variantId entries by summed quantity before validating stock', async () => {
+  const sql = await readFile(checkoutFixMigrationPath, 'utf8');
+  assert.match(sql, /group by \(item->>'variantId'\)::uuid/);
+  assert.match(sql, /sum\(\(item->>'quantity'\)::integer\)::integer as quantity/);
+});
+
+test('create_pending_order does not touch inventory: no stock_quantity write and no inventory_movements insert', async () => {
+  for (const path of [checkoutMigrationPath, checkoutFixMigrationPath]) {
+    const sql = await readFile(path, 'utf8');
+    const fnMatch = sql.match(/create or replace function public\.create_pending_order[\s\S]*?\n\$\$;/);
+    assert.ok(fnMatch, `create_pending_order function not found in ${path}`);
+    const fnBody = fnMatch[0];
+    assert.doesNotMatch(fnBody, /update public\.product_variants set stock_quantity/);
+    assert.doesNotMatch(fnBody, /insert into public\.inventory_movements/);
+  }
+});
+
+test('guest checkout is supported: customer_id is written from auth.uid() (null for anonymous buyers), no login is required', async () => {
+  const sql = await readFile(checkoutFixMigrationPath, 'utf8');
+  assert.match(sql, /insert into public\.orders \([\s\S]*?customer_id/);
+  assert.match(sql, /auth\.uid\(\), trim\(p_customer_email\)/);
+});
+
+test('the checkout migration history is preserved, not rewritten: the original applied migration keeps its known bugs, fixed only by a separate follow-up migration', async () => {
+  const original = await readFile(checkoutMigrationPath, 'utf8');
+  const fix = await readFile(checkoutFixMigrationPath, 'utf8');
+  // The originally-applied file must remain exactly as it was first run against
+  // production — bugs included — so a fresh project replaying both migrations
+  // in order reproduces the same schema history, not a silently rewritten one.
+  assert.match(original, /left join public\.product_variants pv on pv\.id = m\.variant_id/);
+  assert.match(original, /rec\.v_id is null or not rec\.is_active/);
+  assert.doesNotMatch(original, /extensions\.gen_random_bytes/);
+  // The fix migration only replaces the function — it must not redeclare the
+  // column/index that the first migration already created.
+  assert.doesNotMatch(fix, /add column if not exists confirmation_token/);
+  assert.doesNotMatch(fix, /create unique index/);
+  // Both migration filenames sort after the foundation migrations and in
+  // the same relative order they were actually applied in production.
+  assert.ok('20260831194938' > '20260831000300');
+  assert.ok('20260831195354' > '20260831194938');
+});
+
+test('checkout and order confirmation stay isolated from legacy Artesellos checkout, cart and payment modules', async () => {
+  const files = await Promise.all([
+    'src/features/checkout/types.ts',
+    'src/features/checkout/validation.ts',
+    'src/features/checkout/server/mutations.ts',
+    'src/features/checkout/server/queries.ts',
+    'src/app/api/insumos/checkout/route.ts',
+    'src/app/finalizar-compra/page.tsx',
+    'src/app/finalizar-compra/layout.tsx',
+    'src/app/pedido/[id]/confirmacion/page.tsx',
+    'src/app/pedido/layout.tsx',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/components\/wholesale|@\/app\/checkout|checkout\/mp|ProductAdapter|NEXT_PUBLIC_SUPABASE|Mercado ?Pago|mercadopago/i;
+  for (const source of files) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
+});
+
+test('the /carrito checkout CTA only renders when the cart has items, and links to the native checkout, never the legacy one', async () => {
+  const cartPage = await readFile(new URL('src/app/carrito/page.tsx', root), 'utf8');
+  const emptyStateIndex = cartPage.indexOf("items.length === 0");
+  const ctaIndex = cartPage.indexOf('Continuar al checkout');
+  assert.ok(emptyStateIndex >= 0 && ctaIndex > emptyStateIndex, 'the empty-cart early return must appear before the checkout CTA');
+  assert.match(cartPage, /href="\/finalizar-compra"/);
 });

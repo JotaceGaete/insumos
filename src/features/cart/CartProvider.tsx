@@ -29,6 +29,10 @@ interface InsumosCartContextValue {
   isDrawerOpen: boolean;
   openDrawer: () => void;
   closeDrawer: () => void;
+  // True once the localStorage load effect has run. Pages that redirect away
+  // from an "empty" cart (e.g. checkout) must wait for this — before it,
+  // items is [] simply because nothing has been read from storage yet.
+  hydrated: boolean;
 }
 
 const InsumosCartContext = createContext<InsumosCartContextValue | null>(null);
@@ -95,7 +99,8 @@ export function InsumosCartProvider({ children }: { children: ReactNode }) {
     isDrawerOpen,
     openDrawer,
     closeDrawer,
-  }), [cart, addItem, removeItem, setQuantity, increment, decrement, clearCart, isDrawerOpen, openDrawer, closeDrawer]);
+    hydrated,
+  }), [cart, addItem, removeItem, setQuantity, increment, decrement, clearCart, isDrawerOpen, openDrawer, closeDrawer, hydrated]);
 
   return <InsumosCartContext.Provider value={value}>{children}</InsumosCartContext.Provider>;
 }

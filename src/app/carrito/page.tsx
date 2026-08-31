@@ -113,9 +113,12 @@ export default function CarritoPage() {
           <p className="mt-2 text-xs text-stone-500">
             El precio final, el stock y los costos de despacho se confirman al finalizar la compra.
           </p>
-          <p className="mt-4 rounded-lg bg-insumos-cream px-4 py-3 text-center text-sm font-semibold text-insumos-forest">
-            Finalizar compra próximamente
-          </p>
+          <Link
+            href="/finalizar-compra"
+            className="mt-4 flex w-full items-center justify-center rounded-full bg-insumos-forest px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-insumos-forest-dark"
+          >
+            Continuar al checkout
+          </Link>
           <Link href="/productos" className="mt-3 block text-center text-sm font-semibold text-insumos-forest hover:underline">
             Seguir explorando productos
           </Link>
