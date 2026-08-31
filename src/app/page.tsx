@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { HomeCatalog } from '@/features/catalog/components/HomeCatalog';
-import { listCatalogProductListings } from '@/features/catalog/server/queries';
+import { listCatalogCategoriesWithCounts, listCatalogProductListings } from '@/features/catalog/server/queries';
 
 export const metadata: Metadata = {
   title: "Insumos para velas, jabones y perfumería",
@@ -22,6 +22,9 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const listings = await listCatalogProductListings();
-  return <HomeCatalog listings={listings} />;
+  const [listings, categories] = await Promise.all([
+    listCatalogProductListings(),
+    listCatalogCategoriesWithCounts(),
+  ]);
+  return <HomeCatalog listings={listings} categories={categories} />;
 }

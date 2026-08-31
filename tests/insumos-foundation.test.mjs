@@ -83,8 +83,99 @@ test('cart removes by composite identity and rejects invalid quantities', async 
 test('cart does not access localStorage and treats price as a display snapshot', async () => {
   const source = await readFile(new URL('src/features/cart/cartReducer.ts', root), 'utf8');
   const types = await readFile(new URL('src/features/cart/types.ts', root), 'utf8');
+  const provider = await readFile(new URL('src/features/cart/CartProvider.tsx', root), 'utf8');
   assert.doesNotMatch(source, /localStorage/);
   assert.match(types, /Snapshot for display only/);
+  assert.match(provider, /arteinsumos\.cart\.v1/);
+  assert.match(provider, /window\.localStorage/);
+});
+
+test('cart increments, decrements without going below one, and removes explicitly', async () => {
+  const { EMPTY_CART, addCartLine, incrementCartLine, decrementCartLine, removeCartLine } = await loadTypeScript('src/features/cart/cartReducer.ts');
+  const line = { productId: 'p1', variantId: 'v1', productName: 'A', variantName: '100 ml', sku: 'A-100', unitPrice: 1000, quantity: 1 };
+  let cart = addCartLine(EMPTY_CART, line);
+  cart = incrementCartLine(cart, 'p1', 'v1');
+  assert.equal(cart.lines[0].quantity, 2);
+  cart = decrementCartLine(cart, 'p1', 'v1');
+  assert.equal(cart.lines[0].quantity, 1);
+  cart = decrementCartLine(cart, 'p1', 'v1');
+  assert.equal(cart.lines[0].quantity, 1);
+  assert.equal(incrementCartLine(EMPTY_CART, 'missing', 'variant').lines.length, 0);
+  assert.equal(decrementCartLine(EMPTY_CART, 'missing', 'variant').lines.length, 0);
+  cart = removeCartLine(cart, 'p1', 'v1');
+  assert.equal(cart.lines.length, 0);
+});
+
+test('cart clamps additions and quantity edits to known stock and rejects zero-stock variants', async () => {
+  const { EMPTY_CART, addCartLine, setCartLineQuantity } = await loadTypeScript('src/features/cart/cartReducer.ts');
+  const line = { productId: 'p1', variantId: 'v1', productName: 'A', variantName: '100 ml', sku: 'A-100', unitPrice: 1000, quantity: 2, stockAvailable: 3 };
+  let cart = addCartLine(EMPTY_CART, line);
+  assert.equal(cart.lines[0].quantity, 2);
+  cart = addCartLine(cart, { ...line, quantity: 5 });
+  assert.equal(cart.lines[0].quantity, 3);
+  cart = setCartLineQuantity(cart, 'p1', 'v1', 10);
+  assert.equal(cart.lines[0].quantity, 3);
+  assert.throws(() => addCartLine(EMPTY_CART, { ...line, stockAvailable: 0 }));
+});
+
+test('cart clears completely and reports itemCount and subtotal across multiple lines', async () => {
+  const { EMPTY_CART, addCartLine, clearCart } = await loadTypeScript('src/features/cart/cartReducer.ts');
+  let cart = addCartLine(EMPTY_CART, { productId: 'p1', variantId: 'v1', productName: 'A', variantName: '100 ml', sku: 'A-100', unitPrice: 1000, quantity: 2 });
+  cart = addCartLine(cart, { productId: 'p2', variantId: 'v1', productName: 'B', variantName: '500 ml', sku: 'B-500', unitPrice: 3000, quantity: 1 });
+  assert.equal(cart.itemCount, 3);
+  assert.equal(cart.subtotal, 5000);
+  assert.deepEqual(clearCart(), EMPTY_CART);
+});
+
+test('hydrateCart rebuilds a valid cart from stored lines and silently drops corrupted entries', async () => {
+  const { EMPTY_CART, hydrateCart } = await loadTypeScript('src/features/cart/cartReducer.ts');
+  const rebuilt = hydrateCart([
+    { productId: 'p1', variantId: 'v1', productName: 'A', variantName: '100 ml', sku: 'A-100', unitPrice: 1000, quantity: 2 },
+    { garbage: true },
+    { productId: 'p1', variantId: 'v1', productName: 'A', variantName: '100 ml', sku: 'A-100', unitPrice: 1000, quantity: 1 },
+  ]);
+  assert.equal(rebuilt.lines.length, 1);
+  assert.equal(rebuilt.lines[0].quantity, 3);
+  assert.deepEqual(hydrateCart('not-an-array'), EMPTY_CART);
+  assert.deepEqual(hydrateCart(null), EMPTY_CART);
+});
+
+test('insumos cart stays isolated from legacy Artesellos cart, checkout and wholesale modules', async () => {
+  const files = await Promise.all([
+    'src/features/cart/types.ts',
+    'src/features/cart/cartReducer.ts',
+    'src/features/cart/CartProvider.tsx',
+    'src/features/cart/CartDrawer.tsx',
+    'src/app/carrito/page.tsx',
+    'src/app/carrito/layout.tsx',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/components\/wholesale|@\/app\/checkout|ProductAdapter|NEXT_PUBLIC_SUPABASE/;
+  for (const source of files) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
+});
+
+test('recordInventoryMovement uses the session-aware server client so auth.uid() reaches record_inventory_movement', async () => {
+  const mutations = await readFile(new URL('src/features/catalog/server/mutations.ts', root), 'utf8');
+  const fnMatch = mutations.match(/export async function recordInventoryMovement\([\s\S]*?\n}/);
+  assert.ok(fnMatch, 'recordInventoryMovement function not found in mutations.ts');
+  const fnBody = fnMatch[0];
+  // record_inventory_movement() is SECURITY DEFINER and calls has_role(), which
+  // reads auth.uid() from the caller's JWT. The service-role admin client never
+  // carries a user JWT, so calling the RPC through it always fails auth inside
+  // the function itself — this must go through the cookie/session-based client.
+  assert.match(fnBody, /createInsumosSupabaseServer\(\)/);
+  assert.doesNotMatch(fnBody, /createInsumosSupabaseAdmin\(\)/);
+});
+
+test('the inventory movement route surfaces the real Supabase error message instead of a generic one', async () => {
+  const route = await readFile(new URL('src/app/api/insumos/admin/variants/[id]/inventory/route.ts', root), 'utf8');
+  // PostgrestError objects reach the catch block as plain {code,message,...}
+  // values, not `instanceof Error`, so the route must check for a `.message`
+  // property directly rather than relying on instanceof alone.
+  assert.match(route, /'message' in error/);
+  assert.match(route, /Not authorized to update inventory/);
+  assert.match(route, /Insufficient stock/);
 });
 
 test('price tiers resolve one deterministic range and reject invalid quantities', async () => {
@@ -178,7 +269,7 @@ test('product media uses the dedicated insumos bucket and protects storage write
   const sql = await readFile(productMediaStorageMigrationPath, 'utf8');
   const uploader = await readFile(new URL('src/features/admin/components/ProductMediaManager.tsx', root), 'utf8');
   const mediaMutations = await readFile(new URL('src/features/catalog/server/mediaMutations.ts', root), 'utf8');
-  const homeCatalog = await readFile(new URL('src/features/catalog/components/HomeCatalog.tsx', root), 'utf8');
+  const productCard = await readFile(new URL('src/features/catalog/components/ProductCard.tsx', root), 'utf8');
   assert.match(sql, /'product-media'/);
   assert.match(sql, /file_size_limit[\s\S]*8388608/);
   assert.match(sql, /image\/jpeg/);
@@ -190,22 +281,25 @@ test('product media uses the dedicated insumos bucket and protects storage write
   assert.doesNotMatch(uploader, /@\/lib\/supabase|NEXT_PUBLIC_SUPABASE/);
   assert.match(mediaMutations, /requireCatalogManager/);
   assert.match(mediaMutations, /storage\.from\(PRODUCT_MEDIA_BUCKET\)\.remove/);
-  assert.match(homeCatalog, /getProductMediaPublicUrl/);
+  assert.match(productCard, /getProductMediaPublicUrl/);
 });
 
 test('public product listing is isolated from legacy commerce and uses foundation catalog data', async () => {
   const page = await readFile(new URL('src/app/productos/page.tsx', root), 'utf8');
   const catalog = await readFile(new URL('src/features/catalog/components/PublicCatalogPage.tsx', root), 'utf8');
+  const card = await readFile(new URL('src/features/catalog/components/ProductCard.tsx', root), 'utf8');
+  const legacyPattern = /woocommerce|@\/lib\/supabase|@\/components\/ProductCard|ProductAdapter|NEXT_PUBLIC_SUPABASE/;
   assert.match(page, /listCatalogProductListings/);
   assert.match(page, /PublicCatalogPage/);
-  assert.doesNotMatch(page, /woocommerce|@\/lib\/supabase|ProductCard|ProductAdapter|NEXT_PUBLIC_SUPABASE/);
-  assert.match(catalog, /getProductMediaPublicUrl/);
-  assert.match(catalog, /variant\.retailPrice/);
-  assert.match(catalog, /variant\.stockQuantity/);
+  assert.doesNotMatch(page, legacyPattern);
   assert.match(catalog, /categoryId/);
   assert.match(catalog, /type="search"/);
-  assert.match(catalog, /href=\{`\/producto\/\$\{listing\.product\.slug\}/);
-  assert.doesNotMatch(catalog, /woocommerce|@\/lib\/supabase|NEXT_PUBLIC_SUPABASE/);
+  assert.doesNotMatch(catalog, legacyPattern);
+  assert.match(card, /getProductMediaPublicUrl/);
+  assert.match(card, /variant\.retailPrice/);
+  assert.match(card, /variant\.stockQuantity/);
+  assert.match(card, /href=\{`\/producto\/\$\{product\.slug\}/);
+  assert.doesNotMatch(card, legacyPattern);
 });
 
 test('slugify normalizes accents, spaces and casing into a url-safe slug', async () => {
@@ -234,10 +328,19 @@ test('all migrated public catalog routes stay within the insumos foundation', as
     'src/app/productos/page.tsx',
     'src/app/producto/[slug]/page.tsx',
     'src/app/categoria/[slug]/page.tsx',
+    'src/app/carrito/page.tsx',
   ].map((path) => readFile(new URL(path, root), 'utf8')));
   const catalogQueries = await readFile(new URL('src/features/catalog/server/queries.ts', root), 'utf8');
   const productDetail = await readFile(new URL('src/features/catalog/components/ProductDetail.tsx', root), 'utf8');
-  for (const source of [...pages, catalogQueries, productDetail]) {
+  const homeComponents = await Promise.all([
+    'src/features/catalog/components/HomeCatalog.tsx',
+    'src/features/catalog/components/home/Hero.tsx',
+    'src/features/catalog/components/home/CategoryGrid.tsx',
+    'src/features/catalog/components/home/FeaturedProducts.tsx',
+    'src/features/catalog/components/home/TrustStrip.tsx',
+    'src/features/catalog/components/home/categoryVisuals.ts',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  for (const source of [...pages, catalogQueries, productDetail, ...homeComponents]) {
     assert.doesNotMatch(source, /@\/lib\/supabase|@\/lib\/woocommerce|supabaseServerUtils|productAdapter|ProductAdapter|NEXT_PUBLIC_SUPABASE/);
   }
   assert.match(pages[2], /getCatalogProductListing/);
@@ -246,4 +349,14 @@ test('all migrated public catalog routes stay within the insumos foundation', as
   assert.match(productDetail, /selectedVariant\.retailPrice/);
   assert.match(productDetail, /selectedVariant\.stockQuantity/);
   assert.match(productDetail, /getProductMediaPublicUrl/);
+});
+
+test('the admin panel and its login gate render bare, without the legacy Artesellos chrome or the insumos storefront shell', async () => {
+  const clientProviders = await readFile(new URL('src/components/ClientProviders.tsx', root), 'utf8');
+  assert.match(clientProviders, /function isAdminRoute\(pathname: string\)/);
+  assert.match(clientProviders, /pathname\.startsWith\('\/admin'\)/);
+  assert.match(clientProviders, /pathname\.startsWith\('\/acceso-admin'\)/);
+  assert.match(clientProviders, /const shell = admin \? \(\s*<>\{children\}<\/>/);
+  const adminShell = await readFile(new URL('src/features/admin/components/AdminShell.tsx', root), 'utf8');
+  assert.doesNotMatch(adminShell, /Artesellos|ChatInterface|FloatingWhatsApp/);
 });

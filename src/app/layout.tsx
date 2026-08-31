@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import ClientProviders from "@/components/ClientProviders";
 import { SITE_URL } from "@/lib/seo";
@@ -9,11 +9,17 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-playfair",
+  style: ["italic", "normal"],
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "INSUMOS | Materias primas para crear",
-    template: "%s | INSUMOS",
+    default: "ArteInsumos | Materias primas para crear",
+    template: "%s | ArteInsumos",
   },
   description:
     "Insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
@@ -23,7 +29,7 @@ export const metadata: Metadata = {
     "materias primas",
     "packaging",
   ],
-  authors: [{ name: "INSUMOS" }],
+  authors: [{ name: "ArteInsumos" }],
   robots: {
     index: true,
     follow: true,
@@ -33,7 +39,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon-insumos.svg",
   },
   openGraph: {
-    title: "INSUMOS | Materias primas para crear",
+    title: "ArteInsumos | Materias primas para crear",
     description:
       "Insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
     type: "website",
@@ -50,7 +56,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body
-        className={`${inter.variable} font-sans antialiased bg-gray-50`}
+        className={`${inter.variable} ${playfair.variable} font-sans antialiased bg-gray-50`}
       >
         <ClientProviders>
           {children}

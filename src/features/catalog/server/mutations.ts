@@ -1,6 +1,6 @@
 import 'server-only';
 import { requireCatalogManager } from '@/features/auth/server/authorization';
-import { createInsumosSupabaseAdmin } from '@/features/shared/server/supabase';
+import { createInsumosSupabaseAdmin, createInsumosSupabaseServer } from '@/features/shared/server/supabase';
 import type { ProductStatus } from '../types';
 import type { InventoryMovementType } from '../types';
 import { assertInventoryMovementConvention } from '@/features/inventory/movementRules';
@@ -221,8 +221,13 @@ export async function deleteVariant(id: string) {
 export async function recordInventoryMovement(variantId: string, quantityDelta: number, movementType: InventoryMovementType, referenceType?: string | null, referenceId?: string | null, note?: string | null) {
   await requireCatalogManager();
   assertInventoryMovementConvention(movementType, quantityDelta);
-  const admin = createInsumosSupabaseAdmin();
-  const { data, error } = await admin.rpc('record_inventory_movement', {
+  // record_inventory_movement is SECURITY DEFINER and re-checks has_role(admin/staff)
+  // itself via auth.uid(). That check only sees the caller's identity when the
+  // RPC runs through the session-aware client — the service-role admin client
+  // carries no user JWT, so auth.uid() would be null and the function would
+  // always reject the call with "Not authorized to update inventory".
+  const supabase = await createInsumosSupabaseServer();
+  const { data, error } = await supabase.rpc('record_inventory_movement', {
     p_variant_id: variantId, p_quantity_delta: quantityDelta, p_movement_type: movementType,
     p_reference_type: referenceType || null, p_reference_id: referenceId || null, p_note: note || null,
   });

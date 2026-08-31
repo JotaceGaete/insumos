@@ -62,6 +62,30 @@ export async function listCatalogCategories(): Promise<CatalogCategory[]> {
   return ((data || []) as CategoryRow[]).map(mapCategory);
 }
 
+export type CatalogCategoryWithCount = CatalogCategory & { productCount: number };
+
+/**
+ * Lightweight companion to listCatalogCategories for the homepage category grid:
+ * only the category rows plus a per-category active product count, without the
+ * heavier variants/media joins that listCatalogProductListings performs.
+ */
+export async function listCatalogCategoriesWithCounts(): Promise<CatalogCategoryWithCount[]> {
+  const supabase = await createInsumosSupabaseServer();
+  const [categories, { data: productRows, error }] = await Promise.all([
+    listCatalogCategories(),
+    supabase.from('products').select('category_id').eq('status', 'active'),
+  ]);
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const row of (productRows || []) as Array<{ category_id: string | null }>) {
+    if (!row.category_id) continue;
+    counts.set(row.category_id, (counts.get(row.category_id) || 0) + 1);
+  }
+
+  return categories.map((category) => ({ ...category, productCount: counts.get(category.id) || 0 }));
+}
+
 export async function getCatalogProduct(slug: string): Promise<CatalogProduct | null> {
   const supabase = await createInsumosSupabaseServer();
   const { data, error } = await supabase.from('products').select('*').eq('slug', slug).eq('status', 'active').maybeSingle();

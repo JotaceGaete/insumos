@@ -188,3 +188,14 @@ html {
   overflow-y: auto;
   position: relative;
 }
+
+/* Hides the native scrollbar chrome on an element while keeping it scrollable
+   via wheel/trackpad/touch/keyboard — used by horizontally scrolling rows. */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
