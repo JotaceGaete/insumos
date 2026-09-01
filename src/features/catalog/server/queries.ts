@@ -59,7 +59,7 @@ async function fetchAvailableStockByVariantId(
     .from('variant_available_stock')
     .select('variant_id, available_stock')
     .in('variant_id', variantIds);
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return new Map(((data || []) as AvailableStockRow[]).map((row) => [row.variant_id, row.available_stock]));
 }
 
@@ -78,7 +78,7 @@ export type CatalogProductListing = {
 export async function listCatalogCategories(): Promise<CatalogCategory[]> {
   const supabase = await createInsumosSupabaseServer();
   const { data, error } = await supabase.from('categories').select('*').eq('is_active', true).order('sort_order').order('name');
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return ((data || []) as CategoryRow[]).map(mapCategory);
 }
 
@@ -95,7 +95,7 @@ export async function listCatalogCategoriesWithCounts(): Promise<CatalogCategory
     listCatalogCategories(),
     supabase.from('products').select('category_id').eq('status', 'active'),
   ]);
-  if (error) throw error;
+  if (error) throw new Error(error.message);
 
   const counts = new Map<string, number>();
   for (const row of (productRows || []) as Array<{ category_id: string | null }>) {
@@ -109,14 +109,14 @@ export async function listCatalogCategoriesWithCounts(): Promise<CatalogCategory
 export async function getCatalogProduct(slug: string): Promise<CatalogProduct | null> {
   const supabase = await createInsumosSupabaseServer();
   const { data, error } = await supabase.from('products').select('*').eq('slug', slug).eq('status', 'active').maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data ? mapProduct(data as ProductRow) : null;
 }
 
 export async function listProductVariants(productId: string): Promise<ProductVariant[]> {
   const supabase = await createInsumosSupabaseServer();
   const { data, error } = await supabase.from('product_variants').select('*').eq('product_id', productId).eq('is_active', true).order('sort_order');
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   const rows = (data || []) as VariantRow[];
   const availableStockByVariant = await fetchAvailableStockByVariantId(supabase, rows.map((row) => row.id));
   return rows.map((row) => mapVariant(row, availableStockByVariant.get(row.id)));
@@ -130,7 +130,7 @@ export async function getCatalogCategory(slug: string): Promise<CatalogCategory 
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data ? mapCategory(data as CategoryRow) : null;
 }
 
@@ -147,7 +147,7 @@ export async function listCatalogProductListings(): Promise<CatalogProductListin
     .order('is_featured', { ascending: false })
     .order('name');
 
-  if (productsError) throw productsError;
+  if (productsError) throw new Error(productsError.message);
 
   const products = ((productRows || []) as ProductRow[]).map(mapProduct);
   if (products.length === 0) return [];
@@ -159,8 +159,8 @@ export async function listCatalogProductListings(): Promise<CatalogProductListin
     listCatalogCategories(),
   ]);
 
-  if (variantsError) throw variantsError;
-  if (mediaError) throw mediaError;
+  if (variantsError) throw new Error(variantsError.message);
+  if (mediaError) throw new Error(mediaError.message);
 
   const variantRowList = (variantRows || []) as VariantRow[];
   const availableStockByVariant = await fetchAvailableStockByVariantId(supabase, variantRowList.map((row) => row.id));
@@ -197,9 +197,9 @@ export async function getCatalogProductListing(slug: string): Promise<CatalogPro
     supabase.from('product_media').select('*').eq('product_id', product.id).order('is_primary', { ascending: false }).order('sort_order'),
   ]);
 
-  if (categoryError) throw categoryError;
-  if (variantsError) throw variantsError;
-  if (mediaError) throw mediaError;
+  if (categoryError) throw new Error(categoryError.message);
+  if (variantsError) throw new Error(variantsError.message);
+  if (mediaError) throw new Error(mediaError.message);
 
   const variantRowList = (variantRows || []) as VariantRow[];
   const availableStockByVariant = await fetchAvailableStockByVariantId(supabase, variantRowList.map((row) => row.id));
