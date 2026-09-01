@@ -24,6 +24,8 @@ const reservationsFixMigrationPath = new URL('supabase/migrations/20260831202912
 const checkoutV2MigrationPath = new URL('supabase/migrations/20260831225244_insumos_checkout_v2_shipping_billing.sql', root);
 // Placeholder filename, not applied yet — same rename-after-apply pattern.
 const checkoutV21MigrationPath = new URL('supabase/migrations/20260901000549_insumos_checkout_v21_delivery_validation.sql', root);
+// Placeholder filename, not applied yet — same rename-after-apply pattern.
+const emailDeliveriesMigrationPath = new URL('supabase/migrations/20260901135015_insumos_email_deliveries.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -1396,6 +1398,312 @@ test('checkout V2.1 modules (name, email, phone) stay isolated from legacy Artes
     'src/features/checkout/phone.ts',
   ].map((path) => readFile(new URL(path, root), 'utf8')));
   const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/app\/checkout|checkout\/mp|NEXT_PUBLIC_SUPABASE|Mercado ?Pago|mercadopago|starken\.cl|chilexpress\.cl|blueexpress|https?:\/\//i;
+  for (const source of files) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
+});
+
+// ==========================================================================
+// Transactional email foundation: provider-agnostic contract, mock/ZeptoMail
+// providers, order snapshot, "Pedido recibido" template, non-blocking
+// integration into checkout, idempotent delivery tracking.
+// ==========================================================================
+
+test('email types.ts defines a provider-agnostic contract (EmailProvider/EmailMessage/EmailSendResult) with no concrete-provider imports', async () => {
+  const source = await readFile(new URL('src/features/email/types.ts', root), 'utf8');
+  assert.match(source, /export interface EmailProvider/);
+  assert.match(source, /export interface EmailMessage/);
+  assert.match(source, /export interface EmailSendResult/);
+  assert.match(source, /send\(message: EmailMessage\): Promise<EmailSendResult>/);
+  assert.doesNotMatch(source, /from '\.\/providers\/|require\(['"]\.\/providers\//);
+});
+
+test('provider.ts is the single place that resolves a concrete provider from INSUMOS_EMAIL_PROVIDER, defaulting to mock, with no hardcoded credentials', async () => {
+  const source = await readFile(new URL('src/features/email/provider.ts', root), 'utf8');
+  assert.match(source, /process\.env\.INSUMOS_EMAIL_PROVIDER/);
+  assert.match(source, /\|\| 'mock'/);
+  assert.match(source, /case 'mock':/);
+  assert.match(source, /case 'zeptomail':/);
+  assert.match(source, /process\.env\.INSUMOS_EMAIL_FROM\b/);
+  assert.match(source, /process\.env\.INSUMOS_EMAIL_FROM_NAME/);
+  assert.doesNotMatch(source, /sk_live|sk_test|api[_-]?key\s*[:=]\s*['"]/i);
+
+  // provider.ts must be the only file importing the concrete providers —
+  // everything else (sendTransactionalEmail, checkout) depends on the
+  // EmailProvider interface only.
+  const [sendTransactional, route] = await Promise.all([
+    readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8'),
+    readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8'),
+  ]);
+  assert.doesNotMatch(sendTransactional, /providers\/(mock|zeptoMail)EmailProvider/);
+  assert.doesNotMatch(route, /providers\/(mock|zeptoMail)EmailProvider/);
+});
+
+test('mockEmailProvider never performs a real network call, logs only recipient/subject/event (never the full HTML body), and returns a synthetic mock_ id', async () => {
+  const source = await readFile(new URL('src/features/email/providers/mockEmailProvider.ts', root), 'utf8');
+  assert.match(source, /providerMessageId: `mock_\$\{randomUUID\(\)\}`/);
+  assert.match(source, /to: message\.to\.email/);
+  assert.match(source, /subject: message\.subject/);
+  assert.match(source, /eventType: message\.metadata\?\.eventType/);
+  assert.match(source, /orderId: message\.metadata\?\.orderId/);
+  assert.doesNotMatch(source, /message\.html/);
+  assert.doesNotMatch(source, /https?:\/\/|\bfetch\(/);
+});
+
+test('zeptoMailProvider is an unconfigured stub: no real HTTP call, no invented endpoint/credentials, throws a clear "not configured" error', async () => {
+  const source = await readFile(new URL('src/features/email/providers/zeptoMailProvider.ts', root), 'utf8');
+  assert.match(source, /throw new Error\('ZeptoMail provider is not configured'\)/);
+  assert.doesNotMatch(source, /https?:\/\/|\bfetch\(|api\.zeptomail|zeptomail\.com/i);
+  assert.doesNotMatch(source, /sk_live|sk_test|Authorization:|Bearer /i);
+});
+
+test('sendTransactionalEmail checks (order_id, event_type) idempotency before ever attempting a send, and skips — never re-sends — when a row already exists', async () => {
+  const source = await readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8');
+  const sendFnStart = source.indexOf('export async function sendTransactionalEmail');
+  const sendFnEnd = source.indexOf('export interface RetryTransactionalEmailInput');
+  assert.ok(sendFnStart >= 0 && sendFnEnd > sendFnStart, 'could not isolate sendTransactionalEmail body');
+  const sendFnBody = source.slice(sendFnStart, sendFnEnd);
+
+  const idempotencyCheckIndex = sendFnBody.indexOf(".eq('event_type', input.eventType)");
+  const attemptSendIndex = sendFnBody.indexOf('attemptProviderSend(');
+  assert.ok(idempotencyCheckIndex >= 0, 'idempotency select on (order_id, event_type) not found');
+  assert.ok(attemptSendIndex > idempotencyCheckIndex, 'the provider must only be reached after the idempotency check');
+  assert.match(sendFnBody, /if \(existing\) \{\s*\n\s*return \{ status: 'skipped' \};/);
+});
+
+test('sendTransactionalEmail documents and honors the three idempotency outcomes explicitly: sent => skipped, pending => skipped (avoids a concurrent double-send), failed => skipped (left for an explicit retry, never auto-retried)', async () => {
+  const source = await readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8');
+  const sendFnStart = source.indexOf('export async function sendTransactionalEmail');
+  const sendFnEnd = source.indexOf('export interface RetryTransactionalEmailInput');
+  const sendFnBody = source.slice(sendFnStart, sendFnEnd);
+  assert.match(sendFnBody, /sent\s+—\s+already delivered, never resend automatically\./);
+  assert.match(sendFnBody, /pending — a concurrent request already claimed this row/);
+  assert.match(sendFnBody, /failed {2}— left exactly as-is for an explicit, separate\s*\n\s*\/\/\s*retryTransactionalEmail\(deliveryId\) call/);
+  assert.match(sendFnBody, /never retries automatically/);
+});
+
+test('sendTransactionalEmail never throws: every path (idempotent skip, insert failure, provider failure, unexpected error) resolves to a result object', async () => {
+  const source = await readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8');
+  const sendFnStart = source.indexOf('export async function sendTransactionalEmail');
+  const sendFnEnd = source.indexOf('export interface RetryTransactionalEmailInput');
+  assert.ok(sendFnStart >= 0 && sendFnEnd > sendFnStart, 'could not isolate sendTransactionalEmail body');
+  const sendFnBody = source.slice(sendFnStart, sendFnEnd);
+  assert.doesNotMatch(sendFnBody, /\n\s*throw /);
+  assert.match(sendFnBody, /return await attemptProviderSend\(admin, inserted\.id, input\.message\);/);
+  assert.match(sendFnBody, /return \{ status: 'failed', error: 'Error inesperado al enviar el correo\.' \};/);
+});
+
+test('attemptProviderSend (shared by send and retry) records status=sent with provider_message_id and a cleared last_error on success, and status=failed with last_error on provider failure — neither outcome is silently dropped', async () => {
+  const source = await readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8');
+  assert.match(source, /status: 'sent',\s*\n\s*provider_message_id: result\.providerMessageId,\s*\n\s*sent_at: new Date\(\)\.toISOString\(\),\s*\n\s*last_error: null,/);
+  assert.match(source, /status: 'failed', last_error: message2, updated_at:/);
+  assert.match(source, /catch \(sendError\) \{/);
+  assert.match(source, /console\.error\('\[email\] provider send failed', sendError\)/);
+});
+
+test('retryTransactionalEmail only accepts a status="failed" row — retrying an already-sent or still-pending row is rejected (skipped), never re-sent', async () => {
+  const source = await readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8');
+  assert.match(source, /export async function retryTransactionalEmail/);
+  assert.match(source, /if \(existing\.status !== 'failed'\) \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*return \{ status: 'skipped' \};/);
+});
+
+test('retryTransactionalEmail moves the same failed row to pending, increments attempts, and clears last_error before attempting the provider again — it never inserts a second row', async () => {
+  const source = await readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8');
+  const retryFnMatch = source.match(/export async function retryTransactionalEmail[\s\S]*$/);
+  assert.ok(retryFnMatch, 'retryTransactionalEmail body not found');
+  const retryFnBody = retryFnMatch[0];
+
+  assert.match(retryFnBody, /const nextAttempts = \(existing\.attempts \|\| 0\) \+ 1;/);
+  assert.match(retryFnBody, /status: 'pending', attempts: nextAttempts, last_error: null,/);
+  assert.match(retryFnBody, /\.eq\('id', input\.deliveryId\)/);
+  assert.match(retryFnBody, /return await attemptProviderSend\(admin, input\.deliveryId, input\.message\);/);
+  // The defining property that keeps unique(order_id, event_type) safe:
+  // retry only ever updates by id, it never inserts a new delivery row.
+  assert.doesNotMatch(retryFnBody, /\.insert\(/);
+});
+
+test('retryTransactionalEmail is not wired into checkout, a cron, or any worker — it is a standalone primitive only', async () => {
+  const [route, source] = await Promise.all([
+    readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8'),
+    readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8'),
+  ]);
+  assert.doesNotMatch(route, /retryTransactionalEmail/);
+  assert.doesNotMatch(source, /pg_cron|cron\.schedule|setInterval|setTimeout/i);
+});
+
+test('sendTransactionalEmail and getOrderEmailData use only the service-role admin client, never the anon/session client — recipient and error data can never leak to buyers', async () => {
+  const [sendTransactional, orderEmailData] = await Promise.all([
+    readFile(new URL('src/features/email/sendTransactionalEmail.ts', root), 'utf8'),
+    readFile(new URL('src/features/email/orderEmailData.ts', root), 'utf8'),
+  ]);
+  for (const source of [sendTransactional, orderEmailData]) {
+    assert.match(source, /createInsumosSupabaseAdmin/);
+    assert.doesNotMatch(source, /createInsumosSupabaseServer/);
+  }
+});
+
+test('getOrderEmailData builds its snapshot only from orders/order_items (never localStorage or the original checkout payload) and excludes billing_data', async () => {
+  const source = await readFile(new URL('src/features/email/orderEmailData.ts', root), 'utf8');
+  assert.match(source, /\.from\('orders'\)/);
+  assert.match(source, /\.from\('order_items'\)/);
+  assert.doesNotMatch(source, /localStorage\.|window\.localStorage/);
+  // Strip comments before checking: the module's own doc comment explains
+  // *why* billing_data is excluded, which would otherwise trip this check —
+  // only a real code reference (a select column, a field read) should fail it.
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(withoutComments, /billing_data|billingData/);
+  // Explicitly scoped to a single order by id — never trusts a client-supplied filter.
+  assert.match(source, /\.eq\('id', orderId\)/);
+  assert.match(source, /\.eq\('order_id', orderId\)/);
+});
+
+test('the checkout route fires order_received only after the order is already committed, and a notifyOrderReceived failure can never change the HTTP response', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  const createIndex = source.indexOf('const confirmation = await createPendingOrder(payload);');
+  const notifyCallIndex = source.indexOf('await notifyOrderReceived(confirmation.orderId);');
+  const responseIndex = source.indexOf('return NextResponse.json({\n      orderId: confirmation.orderId,');
+  assert.ok(createIndex >= 0 && notifyCallIndex > createIndex, 'notifyOrderReceived must be called after createPendingOrder');
+  assert.ok(responseIndex > notifyCallIndex, 'the success response must be built after the email attempt, not before');
+
+  // notifyOrderReceived itself swallows everything — its own try/catch never re-throws.
+  const notifyFnMatch = source.match(/async function notifyOrderReceived[\s\S]*?\n\}/);
+  assert.ok(notifyFnMatch, 'notifyOrderReceived function not found');
+  assert.doesNotMatch(notifyFnMatch[0], /\n\s*throw /);
+  assert.match(notifyFnMatch[0], /catch \(error\) \{\s*\n\s*console\.error/);
+});
+
+test('OrderReceivedEmail: receiver_pays with a preferred carrier shows "Por pagar", the pay-the-carrier note, the carrier label, subtotal and total', async () => {
+  const { renderOrderReceivedEmail } = await loadTypeScript('src/features/email/templates/OrderReceivedEmail.tsx');
+  const rendered = renderOrderReceivedEmail({
+    orderId: '11111111-2222-3333-4444-555555555555',
+    customerName: 'Juan Pérez',
+    customerEmail: 'juan@example.com',
+    createdAt: '2026-09-01T12:00:00.000Z',
+    items: [{ productName: 'Anchoero', variantName: '500', quantity: 2, unitPrice: 1500, lineTotal: 3000 }],
+    subtotal: 3000,
+    shippingTotal: 0,
+    total: 3000,
+    deliveryMethod: 'shipping',
+    shippingPolicy: 'receiver_pays',
+    preferredCarrier: 'starken',
+    billingDocumentType: 'boleta',
+  });
+  assert.match(rendered.subject, /Recibimos tu pedido/);
+  assert.match(rendered.html, /Por pagar/);
+  assert.match(rendered.html, /El despacho se paga directamente al transportista\./);
+  assert.match(rendered.html, /Starken/);
+  assert.match(rendered.html, /\$3\.000/);
+  assert.match(rendered.text, /Por pagar/);
+  assert.match(rendered.text, /Starken/);
+});
+
+test('OrderReceivedEmail: store_pickup shows "Retiro en tienda — Gratis", no transportista line, and never invents a pickup address', async () => {
+  const { renderOrderReceivedEmail } = await loadTypeScript('src/features/email/templates/OrderReceivedEmail.tsx');
+  const rendered = renderOrderReceivedEmail({
+    orderId: '11111111-2222-3333-4444-555555555555',
+    customerName: 'María Muñoz',
+    customerEmail: 'maria@example.com',
+    createdAt: '2026-09-01T12:00:00.000Z',
+    items: [{ productName: 'OMEGA AMBAR 250 cc', variantName: '250cc', quantity: 1, unitPrice: 1500, lineTotal: 1500 }],
+    subtotal: 1500,
+    shippingTotal: 0,
+    total: 1500,
+    deliveryMethod: 'store_pickup',
+    shippingPolicy: 'pickup',
+    preferredCarrier: null,
+    billingDocumentType: 'boleta',
+  });
+  assert.match(rendered.html, /Retiro en tienda — Gratis/);
+  assert.doesNotMatch(rendered.html, /Transportista/);
+  assert.doesNotMatch(rendered.html, /[Dd]irección/);
+  assert.doesNotMatch(rendered.text, /Transportista/);
+});
+
+test('OrderReceivedEmail: factura shows only the document type "Factura" — never a RUT, razón social or giro (the data layer excludes billing_data entirely)', async () => {
+  const { renderOrderReceivedEmail } = await loadTypeScript('src/features/email/templates/OrderReceivedEmail.tsx');
+  const rendered = renderOrderReceivedEmail({
+    orderId: '11111111-2222-3333-4444-555555555555',
+    customerName: 'Carlos Reyes',
+    customerEmail: 'carlos@example.com',
+    createdAt: '2026-09-01T12:00:00.000Z',
+    items: [{ productName: 'Cera de Coco', variantName: '1 Kg', quantity: 1, unitPrice: 7000, lineTotal: 7000 }],
+    subtotal: 7000,
+    shippingTotal: 0,
+    total: 7000,
+    deliveryMethod: 'store_pickup',
+    shippingPolicy: 'pickup',
+    preferredCarrier: null,
+    billingDocumentType: 'factura',
+  });
+  assert.match(rendered.html, /Factura/);
+  assert.doesNotMatch(rendered.html, /RUT|[Rr]azón social|\bgiro\b/);
+});
+
+test('OrderReceivedEmail never includes promotional content: no banners, discounts, related products or social-media links', async () => {
+  const { renderOrderReceivedEmail } = await loadTypeScript('src/features/email/templates/OrderReceivedEmail.tsx');
+  const rendered = renderOrderReceivedEmail({
+    orderId: '11111111-2222-3333-4444-555555555555',
+    customerName: 'Ana Torres',
+    customerEmail: 'ana@example.com',
+    createdAt: '2026-09-01T12:00:00.000Z',
+    items: [{ productName: 'Avobenzone 250 gr', variantName: '250 gr', quantity: 1, unitPrice: 5000, lineTotal: 5000 }],
+    subtotal: 5000,
+    shippingTotal: 0,
+    total: 5000,
+    deliveryMethod: 'shipping',
+    shippingPolicy: 'free',
+    preferredCarrier: 'chilexpress',
+    billingDocumentType: 'boleta',
+  });
+  assert.doesNotMatch(rendered.html, /descuento|oferta|síguenos|redes sociales|productos relacionados|instagram|facebook/i);
+  assert.match(rendered.html, /Te avisaremos cuando tengamos novedades sobre tu pedido\./);
+  assert.match(rendered.html, /Envío gratis/);
+});
+
+test('email_deliveries migration: table shape, status/attempts constraints, unique(order_id, event_type) idempotency backstop, and updated_at trigger', async () => {
+  const sql = await readFile(emailDeliveriesMigrationPath, 'utf8');
+  assert.match(sql, /create table if not exists public\.email_deliveries/);
+  assert.match(sql, /order_id uuid references public\.orders\(id\) on delete set null/);
+  assert.match(sql, /event_type text not null/);
+  assert.match(sql, /recipient text not null/);
+  assert.match(sql, /provider text not null/);
+  assert.match(sql, /provider_message_id text/);
+  assert.match(sql, /status text not null default 'pending' check \(status in \('pending', 'sent', 'failed'\)\)/);
+  assert.match(sql, /attempts integer not null default 0 check \(attempts >= 0\)/);
+  assert.match(sql, /last_error text/);
+  assert.match(sql, /sent_at timestamptz/);
+  assert.match(sql, /constraint email_deliveries_order_event_unique unique \(order_id, event_type\)/);
+  assert.match(sql, /create trigger email_deliveries_set_updated_at before update on public\.email_deliveries/);
+});
+
+test('email_deliveries has RLS enabled with zero policies — not even a service-role-scoped one — matching the inventory_reservations precedent of "only reachable via server code, never the client"', async () => {
+  const sql = await readFile(emailDeliveriesMigrationPath, 'utf8');
+  assert.match(sql, /alter table public\.email_deliveries enable row level security;/);
+  assert.doesNotMatch(sql, /create policy[^;]*email_deliveries/);
+  assert.doesNotMatch(sql, /grant[^;]*email_deliveries[^;]*to anon/i);
+});
+
+test('email_deliveries migration stays out of scope: no ZeptoMail HTTP endpoints, no Mercado Pago, no cron, no retry workers, no pickup address hardcoded', async () => {
+  const sql = await readFile(emailDeliveriesMigrationPath, 'utf8');
+  const withoutComments = sql.replace(/^\s*--.*$/gm, '');
+  assert.doesNotMatch(withoutComments, /mercado ?pago|mercadopago/i);
+  assert.doesNotMatch(sql, /pg_cron|cron\.schedule/i);
+  assert.doesNotMatch(sql, /zeptomail\.com|api\.zeptomail|https?:\/\//i);
+  assert.doesNotMatch(sql, /retry_worker|queue/i);
+  assert.doesNotMatch(sql, /calle |avenida |dirección de retiro/i);
+});
+
+test('email module (types, provider, mock/ZeptoMail providers, sendTransactionalEmail, orderEmailData, template) stays isolated from legacy Artesellos and never hardcodes a payment/transport-carrier/ZeptoMail endpoint', async () => {
+  const files = await Promise.all([
+    'src/features/email/types.ts',
+    'src/features/email/provider.ts',
+    'src/features/email/sendTransactionalEmail.ts',
+    'src/features/email/orderEmailData.ts',
+    'src/features/email/providers/mockEmailProvider.ts',
+    'src/features/email/providers/zeptoMailProvider.ts',
+    'src/features/email/templates/OrderReceivedEmail.tsx',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/app\/checkout|checkout\/mp|NEXT_PUBLIC_SUPABASE|Mercado ?Pago|mercadopago|starken\.cl|chilexpress\.cl|blueexpress|zeptomail\.com|api\.zeptomail|https?:\/\//i;
   for (const source of files) {
     assert.doesNotMatch(source, legacyPattern);
   }
