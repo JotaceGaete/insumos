@@ -25,6 +25,16 @@ export const mercadoPagoProvider: PaymentProvider = {
       // inventory_reservations window stays the sole authority for the
       // hold; this should be revisited once real credentials are connected
       // and can be tested against an actual sandbox.
+      //
+      // auto_return is deliberately NOT set: confirmed against the live
+      // Mercado Pago API (real test credentials, 2026-09-01) that it
+      // rejects the request with 400 "auto_return invalid. back_url.success
+      // must be defined" whenever back_urls.success isn't a publicly
+      // reachable https URL — localhost fails this even though it's a
+      // syntactically valid absolute URL. back_urls are still sent, so a
+      // buyer completing payment on Mercado Pago can still click through to
+      // return manually; only the automatic redirect is affected. Revisit
+      // once NEXT_PUBLIC_INSUMOS_SITE_URL is a real deployed https domain.
       const result = await preference.create({
         body: {
           items: request.items.map((item) => ({
@@ -37,7 +47,6 @@ export const mercadoPagoProvider: PaymentProvider = {
           payer: { email: request.payerEmail, name: request.payerName },
           external_reference: request.externalReference,
           back_urls: request.backUrls,
-          auto_return: 'approved',
         },
       });
 
