@@ -85,10 +85,10 @@ export default function FinalizarCompraPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // clearCart() re-renders this still-mounted page with items.length === 0
-  // before router.push to the confirmation page actually navigates away —
-  // without this flag, the empty-cart guard below (meant for someone who
-  // opens /finalizar-compra directly with nothing in their cart) would win
-  // that race and bounce a just-completed order back to /carrito instead.
+  // before the browser actually leaves for paymentUrl — without this flag,
+  // the empty-cart guard below (meant for someone who opens
+  // /finalizar-compra directly with nothing in their cart) would win that
+  // race and bounce a just-completed order back to /carrito instead.
   const [orderPlaced, setOrderPlaced] = useState(false);
 
   useEffect(() => {
@@ -264,11 +264,15 @@ export default function FinalizarCompraPage() {
         setSubmitting(false);
         return;
       }
-      // Only clear the cart once the server has actually confirmed the order —
-      // on any failure above (or thrown below) the cart stays exactly as it was.
+      // Only clear the cart once the server has actually confirmed the order,
+      // reserved inventory AND created a payment preference (all three
+      // already happened server-side by the time this response is 201) — on
+      // any failure above (or thrown below) the cart stays exactly as it was.
       setOrderPlaced(true);
       clearCart();
-      router.push(`/pedido/${data.orderId}/confirmacion?token=${encodeURIComponent(data.confirmationToken)}`);
+      // Full navigation, not router.push: paymentUrl is the payment
+      // provider's own checkout page, entirely outside this app.
+      window.location.href = data.paymentUrl;
     } catch {
       setErrorMessage('No pudimos conectar con el servidor. Intenta nuevamente.');
       setSubmitting(false);

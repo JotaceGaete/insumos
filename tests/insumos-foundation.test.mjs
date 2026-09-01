@@ -26,6 +26,10 @@ const checkoutV2MigrationPath = new URL('supabase/migrations/20260831225244_insu
 const checkoutV21MigrationPath = new URL('supabase/migrations/20260901000549_insumos_checkout_v21_delivery_validation.sql', root);
 // Placeholder filename, not applied yet — same rename-after-apply pattern.
 const emailDeliveriesMigrationPath = new URL('supabase/migrations/20260901135015_insumos_email_deliveries.sql', root);
+// Placeholder filename, not applied yet — same rename-after-apply pattern.
+const paymentPreferenceMigrationPath = new URL('supabase/migrations/20260901150511_insumos_payment_preference_columns.sql', root);
+// Placeholder filename, not applied yet — same rename-after-apply pattern.
+const releasePaymentReservationMigrationPath = new URL('supabase/migrations/20260901154539_insumos_release_order_payment_reservation.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -483,12 +487,12 @@ test('the checkout route validates the payload before ever calling the order mut
   assert.ok(validateIndex >= 0 && createIndex > validateIndex, 'validation must run before order creation');
 });
 
-test('the checkout page only clears the cart after the server confirms the order was created, never before or on failure', async () => {
+test('the checkout page only clears the cart after the server confirms order + reservation + payment preference all succeeded (a single 2xx response), never before or on failure', async () => {
   const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
   const okCheckIndex = page.indexOf('if (!response.ok)');
   const clearCartCallIndex = page.indexOf('clearCart();');
   assert.ok(okCheckIndex >= 0 && clearCartCallIndex > okCheckIndex, 'clearCart() must be reachable only after the ok-check, i.e. after a real success response');
-  assert.match(page, /router\.push\(`\/pedido\/\$\{data\.orderId\}\/confirmacion\?token=/);
+  assert.match(page, /window\.location\.href = data\.paymentUrl;/);
 });
 
 test('the checkout page does not bounce a just-placed order back to /carrito via its own empty-cart guard', async () => {
@@ -1707,4 +1711,264 @@ test('email module (types, provider, mock/ZeptoMail providers, sendTransactional
   for (const source of files) {
     assert.doesNotMatch(source, legacyPattern);
   }
+});
+
+// ==========================================================================
+// Mercado Pago Etapa 1: reserve inventory, create a payment preference
+// server-side, redirect the buyer — no webhook, no confirm_order_paid, no
+// stock decrement, no real Mercado Pago connection yet.
+// ==========================================================================
+
+test('payments/types.ts defines a provider-agnostic contract (PaymentProvider/PaymentPreferenceRequest/Result) with no concrete-provider imports', async () => {
+  const source = await readFile(new URL('src/features/payments/types.ts', root), 'utf8');
+  assert.match(source, /export interface PaymentProvider/);
+  assert.match(source, /export interface PaymentPreferenceRequest/);
+  assert.match(source, /export interface PaymentPreferenceResult/);
+  assert.match(source, /createPreference\(request: PaymentPreferenceRequest\): Promise<PaymentPreferenceResult>/);
+  assert.doesNotMatch(source, /from '\.\/providers\/|require\(['"]\.\/providers\//);
+});
+
+test('payments/provider.ts is the single place that resolves a concrete provider from INSUMOS_PAYMENT_PROVIDER, defaulting to mock, with no hardcoded credentials', async () => {
+  const source = await readFile(new URL('src/features/payments/provider.ts', root), 'utf8');
+  assert.match(source, /process\.env\.INSUMOS_PAYMENT_PROVIDER/);
+  assert.match(source, /\|\| 'mock'/);
+  assert.match(source, /case 'mock':/);
+  assert.match(source, /case 'mercadopago':/);
+  assert.doesNotMatch(source, /sk_live|sk_test|APP_USR-|api[_-]?key\s*[:=]\s*['"]/i);
+
+  const [createPreference, route] = await Promise.all([
+    readFile(new URL('src/features/payments/createPaymentPreference.ts', root), 'utf8'),
+    readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8'),
+  ]);
+  assert.doesNotMatch(createPreference, /providers\/(mock|mercadoPago)PaymentProvider/);
+  assert.doesNotMatch(route, /providers\/(mock|mercadoPago)PaymentProvider/);
+});
+
+test('mockPaymentProvider never performs a real network call and returns a synthetic preference id + a checkoutUrl pointing at our own /pago/retorno', async () => {
+  const source = await readFile(new URL('src/features/payments/providers/mockPaymentProvider.ts', root), 'utf8');
+  assert.match(source, /`mock_pref_\$\{randomUUID\(\)\}`/);
+  assert.match(source, /\/pago\/retorno\?/);
+  assert.doesNotMatch(source, /\bfetch\(|axios|XMLHttpRequest/);
+});
+
+test('mercadoPagoProvider uses the real mercadopago SDK (MercadoPagoConfig/Preference), fails in a controlled way with no access token, and never invents an HTTP endpoint or logs the token', async () => {
+  const source = await readFile(new URL('src/features/payments/providers/mercadoPagoProvider.ts', root), 'utf8');
+  assert.match(source, /await import\('mercadopago'\)/);
+  assert.match(source, /new MercadoPagoConfig\(\{ accessToken \}\)/);
+  assert.match(source, /new Preference\(client\)/);
+  assert.match(source, /if \(!accessToken\) \{\s*\n\s*return \{ status: 'failed', error: 'Mercado Pago no está configurado\.' \};/);
+  assert.doesNotMatch(source, /https?:\/\/api\.mercadopago/);
+  assert.doesNotMatch(source, /console\.log\([^)]*accessToken/);
+});
+
+test('createPaymentPreference (amount authority): re-reads order.total from the database and its input carries no client-suppliable amount, item price, or item list', async () => {
+  const source = await readFile(new URL('src/features/payments/createPaymentPreference.ts', root), 'utf8');
+  assert.match(source, /\.from\('orders'\)/);
+  assert.match(source, /\.select\('id, status, total,/);
+  assert.match(source, /totalAmount: order\.total/);
+
+  const inputInterfaceMatch = source.match(/export interface CreatePaymentPreferenceInput \{[\s\S]*?\n\}/);
+  assert.ok(inputInterfaceMatch, 'CreatePaymentPreferenceInput not found');
+  assert.doesNotMatch(inputInterfaceMatch[0], /total|amount|price|items/i);
+});
+
+test('createPaymentPreference (receiver_pays / pickup): the amount sent to the provider is exactly the sum of persisted order_items line_total, matched against orders.total — no shipping cost is ever added, and delivery_method/shipping_policy are never referenced', async () => {
+  const source = await readFile(new URL('src/features/payments/createPaymentPreference.ts', root), 'utf8');
+  assert.match(source, /const itemsSum = rows\.reduce\(\(sum, row\) => sum \+ row\.line_total, 0\);/);
+  assert.match(source, /if \(itemsSum !== order\.total\) \{/);
+  assert.doesNotMatch(source, /shipping_total|shippingTotal|delivery_method|deliveryMethod|shipping_policy|shippingPolicy/);
+});
+
+test('createPaymentPreference (idempotency): reuses an existing preference for the same order+provider without ever calling the provider again, and documents why reservation freshness does not need separate tracking', async () => {
+  const source = await readFile(new URL('src/features/payments/createPaymentPreference.ts', root), 'utf8');
+  const reuseCheckIndex = source.indexOf("if (order.payment_provider === providerName && order.payment_provider_preference_id && order.payment_checkout_url)");
+  const providerCallIndex = source.indexOf('provider.createPreference(request)');
+  assert.ok(reuseCheckIndex >= 0, 'idempotency reuse check not found');
+  assert.ok(providerCallIndex > reuseCheckIndex, 'provider must only be called after the reuse check');
+  assert.match(source, /return \{ status: 'reused', paymentUrl: order\.payment_checkout_url, providerPreferenceId: order\.payment_provider_preference_id \};/);
+  assert.match(source, /status === 'awaiting_payment' already IS the up-to-date signal/);
+});
+
+test('createPaymentPreference never throws — every failure path (order not found, wrong token, not awaiting_payment, invalid total, no items, total mismatch, provider failure, persist failure) resolves to a result object', async () => {
+  const source = await readFile(new URL('src/features/payments/createPaymentPreference.ts', root), 'utf8');
+  const fnBody = source.slice(source.indexOf('export async function createPaymentPreference'));
+  assert.doesNotMatch(fnBody, /\n\s*throw /);
+  assert.match(fnBody, /status: 'failed'/);
+});
+
+test('checkout route: reservation happens before the payment preference is ever created — a reservation failure never reaches createPaymentPreference', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  const reserveIndex = source.indexOf('await reserveOrderInventory(');
+  const preferenceIndex = source.indexOf('await createPaymentPreference(');
+  assert.ok(reserveIndex >= 0, 'reserveOrderInventory call not found');
+  assert.ok(preferenceIndex > reserveIndex, 'createPaymentPreference must only be called after reserveOrderInventory');
+});
+
+test('checkout route: a payment preference failure releases the reservation via release_order_payment_reservation (never a direct UPDATE), responds with a non-2xx status, and never marks the order paid', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  const failureBranch = source.slice(source.indexOf("if (preference.status === 'failed')"), source.indexOf("return NextResponse.json({\n      orderId: confirmation.orderId,\n      confirmationToken: confirmation.confirmationToken,\n      subtotal:"));
+  assert.match(failureBranch, /await releaseOrderPaymentReservation\(confirmation\.orderId, confirmation\.confirmationToken,/);
+  assert.match(failureBranch, /status: 502/);
+  assert.doesNotMatch(failureBranch, /status: 'paid'|payment_status.*approved|confirm_order_paid/i);
+  assert.doesNotMatch(source, /\.from\('orders'\)\.update/);
+});
+
+test('checkout route: on success the response includes paymentUrl from the created/reused preference, and the reservation\'s own expires_at (never recomputed) is passed through to createPaymentPreference', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  assert.match(source, /const reservationExpiresAt = reservation\[0\]\?\.expiresAt \?\? null;/);
+  assert.match(source, /reservationExpiresAt,/);
+  assert.match(source, /paymentUrl: preference\.paymentUrl,/);
+});
+
+test('checkout route never calls confirm_order_paid, never sets order status to paid, and never trusts a client-supplied amount for the payment preference', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  assert.doesNotMatch(source, /confirm_order_paid/);
+  assert.doesNotMatch(source, /'paid'/);
+  assert.doesNotMatch(source, /body\.total|body\.amount|body\.subtotal|payload\.total|payload\.amount/);
+});
+
+test('mutations.ts: reserveOrderInventory and releaseOrderPaymentReservation are thin RPC wrappers with no duplicated reservation/release business logic', async () => {
+  const source = await readFile(new URL('src/features/checkout/server/mutations.ts', root), 'utf8');
+  assert.match(source, /supabase\.rpc\('reserve_order_inventory', \{/);
+  assert.match(source, /supabase\.rpc\('release_order_payment_reservation', \{/);
+  // No manual inventory_reservations/product_variants/orders writes
+  // anywhere in this file — every state change goes through the RPCs.
+  assert.doesNotMatch(source, /\.from\('inventory_reservations'\)|\.from\('product_variants'\)|\.from\('inventory_movements'\)|\.from\('orders'\)/);
+  assert.match(source, /if \(error\) console\.error\('\[checkout\] release_order_payment_reservation failed', error\);/);
+});
+
+test('/pago/retorno page: never calls confirm_order_paid, never touches payment_status/order status, and never even imports a Supabase/DB client — a browser return can never become payment authority', async () => {
+  const source = await readFile(new URL('src/app/pago/retorno/page.tsx', root), 'utf8');
+  const withoutComments = source.replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(withoutComments, /confirm_order_paid|payment_status|createInsumosSupabaseAdmin|createInsumosSupabaseServer|supabase/i);
+  assert.match(source, /Estamos verificando tu pago/);
+  // The one required phrase must appear unconditionally — not only inside
+  // an `if` branch for a particular status — so a status=approved
+  // querystring gets exactly the same "still verifying" message as any
+  // other status.
+  const messageIndex = source.indexOf('Estamos verificando tu pago');
+  const precedingIfIndex = source.lastIndexOf('{looksRejected', messageIndex);
+  assert.ok(precedingIfIndex === -1 || precedingIfIndex > messageIndex, 'the verifying message must not be gated behind a status-specific branch');
+});
+
+test('finalizar-compra page redirects to the server-returned paymentUrl via a full navigation (never router.push, never trusting a client-built URL)', async () => {
+  const source = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(source, /window\.location\.href = data\.paymentUrl;/);
+  assert.doesNotMatch(source, /router\.push\(`\/pedido\//);
+});
+
+test('secrets: INSUMOS_MP_ACCESS_TOKEN is read only by mercadoPagoProvider.ts, and never appears in any client-facing page/component', async () => {
+  const [provider, checkoutPage, retornoPage, cartDrawer, cartProvider] = await Promise.all([
+    readFile(new URL('src/features/payments/providers/mercadoPagoProvider.ts', root), 'utf8'),
+    readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8'),
+    readFile(new URL('src/app/pago/retorno/page.tsx', root), 'utf8'),
+    readFile(new URL('src/features/cart/CartDrawer.tsx', root), 'utf8'),
+    readFile(new URL('src/features/cart/CartProvider.tsx', root), 'utf8'),
+  ]);
+  assert.match(provider, /INSUMOS_MP_ACCESS_TOKEN/);
+  for (const source of [checkoutPage, retornoPage, cartDrawer, cartProvider]) {
+    assert.doesNotMatch(source, /INSUMOS_MP_ACCESS_TOKEN|INSUMOS_MP_PUBLIC_KEY/);
+  }
+  assert.doesNotMatch(checkoutPage, /'use server'/);
+});
+
+test('payment_preference_columns migration: adds only payment_provider_preference_id/payment_checkout_url/payment_created_at to orders, no data migration, no RLS/grant changes', async () => {
+  const sql = await readFile(paymentPreferenceMigrationPath, 'utf8');
+  assert.match(sql, /alter table public\.orders/);
+  assert.match(sql, /add column payment_provider_preference_id text unique/);
+  assert.match(sql, /add column payment_checkout_url text/);
+  assert.match(sql, /add column payment_created_at timestamptz/);
+  assert.doesNotMatch(sql, /create policy|grant |revoke |create table|drop table/i);
+});
+
+test('payment_preference_columns migration stays out of scope: no Mercado Pago HTTP endpoints, no webhook, no confirm_order_paid changes, no stock/inventory_movements changes', async () => {
+  const sql = await readFile(paymentPreferenceMigrationPath, 'utf8');
+  const withoutComments = sql.replace(/^\s*--.*$/gm, '');
+  assert.doesNotMatch(withoutComments, /webhook|confirm_order_paid|inventory_movements|stock_quantity/i);
+  assert.doesNotMatch(sql, /https?:\/\//i);
+});
+
+test('payments module (types, provider, mock/MercadoPago providers, createPaymentPreference) stays isolated from legacy Artesellos — mercadopago itself is expected here, but not the legacy client/env/routes', async () => {
+  const files = await Promise.all([
+    'src/features/payments/types.ts',
+    'src/features/payments/provider.ts',
+    'src/features/payments/createPaymentPreference.ts',
+    'src/features/payments/providers/mockPaymentProvider.ts',
+    'src/features/payments/providers/mercadoPagoProvider.ts',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/app\/checkout|checkout\/mp|create-payment-link|NEXT_PUBLIC_SUPABASE\b|(?<!INSUMOS_)MP_ACCESS_TOKEN\b|starken\.cl|chilexpress\.cl|blueexpress/i;
+  for (const source of files) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
+});
+
+// ==========================================================================
+// Mercado Pago Etapa 1, corrective fix: release_order_payment_reservation
+// closes the "order stuck at awaiting_payment with no active reservation"
+// gap left by a payment-preference failure, without touching
+// release_order_inventory itself (so any other future caller keeps its own
+// outcome — e.g. a future "buyer cancelled" flow must end at status =
+// 'cancelled', not 'pending', and must NOT reuse this function).
+// ==========================================================================
+
+test('release_order_payment_reservation migration: calls release_order_inventory internally (no duplicated release logic), only reverts awaiting_payment -> pending when payment_status is still pending, never touches payment_status itself, and grants match release_order_inventory\'s own buyer-callable model', async () => {
+  const sql = await readFile(releasePaymentReservationMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.release_order_payment_reservation[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'release_order_payment_reservation not found');
+  const fn = fnMatch[0];
+
+  assert.match(fn, /v_released_count := public\.release_order_inventory\(p_order_id, p_confirmation_token, p_reason\);/);
+  assert.match(fn, /if v_status = 'awaiting_payment' and v_payment_status = 'pending' then/);
+  assert.match(fn, /update public\.orders set status = 'pending' where id = p_order_id;/);
+  // No duplicated reservation-release logic: the only DML this function
+  // performs directly is the status UPDATE — everything about
+  // inventory_reservations is delegated to release_order_inventory.
+  assert.doesNotMatch(fn, /update public\.inventory_reservations/);
+  // payment_status is read but never assigned.
+  assert.doesNotMatch(fn, /set payment_status/);
+  assert.match(sql, /grant execute on function public\.release_order_payment_reservation\(uuid, text, text\) to anon, authenticated;/);
+});
+
+test('release_order_payment_reservation migration does not modify release_order_inventory, its grants, or any historical migration', async () => {
+  const sql = await readFile(releasePaymentReservationMigrationPath, 'utf8');
+  assert.doesNotMatch(sql, /create or replace function public\.release_order_inventory\(/);
+  assert.doesNotMatch(sql, /create or replace function public\.reserve_order_inventory\(/);
+  assert.doesNotMatch(sql, /create or replace function public\.expire_inventory_reservations\(/);
+  assert.doesNotMatch(sql, /create or replace function public\.confirm_order_paid\(/);
+  assert.doesNotMatch(sql, /create or replace function public\.create_pending_order\(/);
+  assert.doesNotMatch(sql, /alter table public\.orders\s+add column/);
+
+  const reservationsSql = await readFile(reservationsMigrationPath, 'utf8');
+  // release_order_inventory itself must remain untouched: still never sets
+  // order.status, matching the existing test for that migration exactly.
+  const releaseFnMatch = reservationsSql.match(/create or replace function public\.release_order_inventory[\s\S]*?\n\$\$;/);
+  assert.doesNotMatch(releaseFnMatch[0], /update public\.orders set status/);
+});
+
+test('release_order_payment_reservation: Case 1 (provider failure) — checkout route calls it only in the preference-failure branch, and mutations.ts documents the pending/awaiting_payment semantics it produces', async () => {
+  const [route, mutations] = await Promise.all([
+    readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8'),
+    readFile(new URL('src/features/checkout/server/mutations.ts', root), 'utf8'),
+  ]);
+  const failureBranch = route.slice(route.indexOf("if (preference.status === 'failed')"), route.indexOf("return NextResponse.json({\n      orderId: confirmation.orderId,\n      confirmationToken: confirmation.confirmationToken,\n      subtotal:"));
+  assert.match(failureBranch, /await releaseOrderPaymentReservation\(/);
+  assert.match(mutations, /reverts\s*\n?\s*\*?\s*status from 'awaiting_payment' back to 'pending'/);
+});
+
+test('release_order_payment_reservation: Case 2/3 (guarded scope) — the status revert is conditioned on order.status = awaiting_payment, so a release_order_inventory rejection (order not awaiting/pending, already paid/fulfilled) propagates and aborts before any UPDATE runs — never degrades a paid/fulfilled order', async () => {
+  const sql = await readFile(releasePaymentReservationMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.release_order_payment_reservation[\s\S]*?\n\$\$;/);
+  const fn = fnMatch[0];
+  // release_order_inventory is called BEFORE the status check/update, so its
+  // own "no es posible liberar un pedido ya pagado" guard (tested elsewhere
+  // against release_order_inventory itself) runs first and, on rejection,
+  // aborts this function's entire transaction before the UPDATE is reached.
+  const releaseCallIndex = fn.indexOf('public.release_order_inventory(');
+  const updateIndex = fn.indexOf("update public.orders set status = 'pending'");
+  assert.ok(releaseCallIndex >= 0 && updateIndex > releaseCallIndex, 'release_order_inventory must run, and be able to abort, before the status UPDATE');
+});
+
+test('release_order_payment_reservation: Case 5 (successful preference) — createPaymentPreference never calls it, so a created/reused preference leaves the order awaiting_payment with its reservation untouched', async () => {
+  const createPreference = await readFile(new URL('src/features/payments/createPaymentPreference.ts', root), 'utf8');
+  assert.doesNotMatch(createPreference, /releaseOrderPaymentReservation|release_order_payment_reservation|release_order_inventory/);
 });

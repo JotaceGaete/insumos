@@ -58,6 +58,13 @@ export interface CreatedOrderConfirmation {
   shippingPolicy: ShippingPolicy;
 }
 
+export interface ReservationLine {
+  reservationId: UUID;
+  variantId: UUID;
+  quantity: number;
+  expiresAt: string;
+}
+
 export interface OrderConfirmationLine {
   productId: UUID;
   variantId: UUID;
