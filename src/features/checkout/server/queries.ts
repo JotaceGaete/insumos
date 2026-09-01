@@ -1,13 +1,14 @@
 import 'server-only';
 import { createInsumosSupabaseAdmin } from '@/features/shared/server/supabase';
 import type { CheckoutBillingData, OrderConfirmationDetail, OrderConfirmationLine } from '../types';
-import type { BillingDocumentType, PreferredCarrier, ShippingPolicy } from '../shipping';
+import type { BillingDocumentType, DeliveryMethod, PreferredCarrier, ShippingPolicy } from '../shipping';
 
 type OrderRow = {
   id: string; customer_name: string; customer_email: string; customer_phone: string | null;
   status: string; payment_status: string; subtotal: number; shipping_total: number;
   discount_total: number; total: number; shipping_address: Record<string, unknown> | null;
   notes: string | null; created_at: string;
+  delivery_method: string;
   shipping_policy: string; preferred_carrier: string | null; billing_document_type: string;
   billing_data: Record<string, unknown> | null;
 };
@@ -44,7 +45,7 @@ async function fetchOrderConfirmation(orderId: string, token: string): Promise<O
 
   const { data: orderRow, error: orderError } = await admin
     .from('orders')
-    .select('id, customer_name, customer_email, customer_phone, status, payment_status, subtotal, shipping_total, discount_total, total, shipping_address, notes, created_at, shipping_policy, preferred_carrier, billing_document_type, billing_data')
+    .select('id, customer_name, customer_email, customer_phone, status, payment_status, subtotal, shipping_total, discount_total, total, shipping_address, notes, created_at, delivery_method, shipping_policy, preferred_carrier, billing_document_type, billing_data')
     .eq('id', orderId)
     .eq('confirmation_token', token)
     .maybeSingle();
@@ -73,6 +74,7 @@ async function fetchOrderConfirmation(orderId: string, token: string): Promise<O
     shippingAddress: (order.shipping_address as unknown as OrderConfirmationDetail['shippingAddress']) || null,
     notes: order.notes,
     createdAt: order.created_at,
+    deliveryMethod: order.delivery_method as DeliveryMethod,
     shippingPolicy: order.shipping_policy as ShippingPolicy,
     preferredCarrier: order.preferred_carrier as PreferredCarrier | null,
     billingDocumentType: order.billing_document_type as BillingDocumentType,

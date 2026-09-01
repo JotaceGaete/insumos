@@ -1,5 +1,5 @@
 import type { UUID } from '@/features/catalog/types';
-import type { BillingDocumentType, PreferredCarrier, ShippingPolicy } from './shipping';
+import type { BillingDocumentType, DeliveryMethod, PreferredCarrier, ShippingPolicy } from './shipping';
 
 export interface CheckoutItemInput {
   variantId: UUID;
@@ -12,6 +12,8 @@ export interface CheckoutShippingAddress {
   address: string;
   number: string;
   unit?: string | null;
+  /** Villa/población/sector — optional, distinct from delivery notes. */
+  sector?: string | null;
 }
 
 export interface CheckoutBillingData {
@@ -30,9 +32,14 @@ export interface CheckoutCustomerInput {
   fullName: string;
   email: string;
   phone: string;
-  shippingAddress: CheckoutShippingAddress;
+  deliveryMethod: DeliveryMethod;
+  // Required (and validated) only when deliveryMethod === 'shipping'; always
+  // null for store_pickup — there's no despacho address to hold.
+  shippingAddress: CheckoutShippingAddress | null;
   deliveryNotes?: string | null;
-  preferredCarrier: PreferredCarrier;
+  // Required only when deliveryMethod === 'shipping'; always null for
+  // store_pickup — picking a carrier makes no sense without a shipment.
+  preferredCarrier: PreferredCarrier | null;
   billingDocumentType: BillingDocumentType;
   // Required when billingDocumentType === 'factura', absent for 'boleta'.
   billingData?: CheckoutBillingData | null;
@@ -77,6 +84,7 @@ export interface OrderConfirmationDetail {
   notes: string | null;
   createdAt: string;
   items: OrderConfirmationLine[];
+  deliveryMethod: DeliveryMethod;
   shippingPolicy: ShippingPolicy;
   preferredCarrier: PreferredCarrier | null;
   billingDocumentType: BillingDocumentType;

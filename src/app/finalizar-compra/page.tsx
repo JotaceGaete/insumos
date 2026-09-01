@@ -3,34 +3,46 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Store, Truck } from 'lucide-react';
 import { useInsumosCart } from '@/features/cart/CartProvider';
 import { listComunasForRegion, listRegionNames } from '@/features/checkout/regionComuna';
 import {
   BILLING_DOCUMENT_TYPES,
   CARRIER_LABELS,
+  DELIVERY_METHODS,
   FREE_SHIPPING_THRESHOLD,
   PREFERRED_CARRIERS,
   amountUntilFreeShipping,
   computeShippingPolicy,
   type BillingDocumentType,
+  type DeliveryMethod,
   type PreferredCarrier,
 } from '@/features/checkout/shipping';
 import { isValidRut } from '@/features/checkout/rut';
+import { isValidFullName } from '@/features/checkout/name';
+import { isValidEmail } from '@/features/checkout/email';
+import { CHILE_COUNTRY_CODE, isValidChileanMobile, normalizeChileanMobile, sanitizeNationalDigits } from '@/features/checkout/phone';
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(price);
 }
 
+const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
+  shipping: 'Despacho',
+  store_pickup: 'Retiro en tienda — Gratis',
+};
+
 type CheckoutForm = {
   fullName: string;
   email: string;
-  phone: string;
+  phoneDigits: string;
+  deliveryMethod: DeliveryMethod;
   region: string;
   comuna: string;
   address: string;
   number: string;
   unit: string;
+  sector: string;
   deliveryNotes: string;
   preferredCarrier: PreferredCarrier;
   billingDocumentType: BillingDocumentType;
@@ -47,7 +59,8 @@ type CheckoutForm = {
 };
 
 const emptyForm: CheckoutForm = {
-  fullName: '', email: '', phone: '', region: '', comuna: '', address: '', number: '', unit: '', deliveryNotes: '',
+  fullName: '', email: '', phoneDigits: '', deliveryMethod: 'shipping',
+  region: '', comuna: '', address: '', number: '', unit: '', sector: '', deliveryNotes: '',
   preferredCarrier: 'starken',
   billingDocumentType: 'boleta',
   useSameAddressForBilling: true,
@@ -55,14 +68,20 @@ const emptyForm: CheckoutForm = {
   billingRegion: '', billingComuna: '', billingAddress: '', billingNumber: '', billingUnit: '',
 };
 
+type TouchedFields = { fullName: boolean; email: boolean; phone: boolean };
+const emptyTouched: TouchedFields = { fullName: false, email: false, phone: false };
+
 const inputClass = 'mt-1 w-full rounded-lg border border-insumos-line bg-white px-3 py-2.5 text-sm text-insumos-ink outline-none focus:border-insumos-forest focus:ring-2 focus:ring-insumos-mint disabled:bg-insumos-cream disabled:text-stone-400';
+const errorInputClass = 'mt-1 w-full rounded-lg border border-red-400 bg-white px-3 py-2.5 text-sm text-insumos-ink outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100';
 const labelClass = 'block text-sm font-semibold text-insumos-ink';
+const fieldErrorClass = 'mt-1 text-xs font-semibold text-red-600';
 const REGION_NAMES = listRegionNames();
 
 export default function FinalizarCompraPage() {
   const router = useRouter();
   const { items, subtotal, clearCart, hydrated } = useInsumosCart();
   const [form, setForm] = useState<CheckoutForm>(emptyForm);
+  const [touched, setTouched] = useState<TouchedFields>(emptyTouched);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // clearCart() re-renders this still-mounted page with items.length === 0
@@ -76,14 +95,37 @@ export default function FinalizarCompraPage() {
     if (hydrated && items.length === 0 && !orderPlaced) router.replace('/carrito');
   }, [hydrated, items.length, orderPlaced, router]);
 
+  const isShipping = form.deliveryMethod === 'shipping';
+  // Sections 3 (Dirección) and 4 (Transportista) only exist for shipping —
+  // renumber so store_pickup goes straight from 2 to 3 instead of jumping
+  // to 5, rather than leaving gaps where hidden sections used to be.
+  const addressSectionNumber = 3;
+  const carrierSectionNumber = 4;
+  const documentSectionNumber = isShipping ? 5 : 3;
   const shippingPolicy = useMemo(() => computeShippingPolicy(subtotal), [subtotal]);
   const remainderForFreeShipping = useMemo(() => amountUntilFreeShipping(subtotal), [subtotal]);
   const comunasForRegion = useMemo(() => listComunasForRegion(form.region), [form.region]);
   const billingComunasForRegion = useMemo(() => listComunasForRegion(form.billingRegion), [form.billingRegion]);
   const isFactura = form.billingDocumentType === 'factura';
 
+  // Only flag a format error once the field has been touched (blurred) and
+  // actually holds something — an empty untouched field, or one the buyer
+  // hasn't left yet, never shows red. Emptiness itself is caught by the
+  // top-of-form "completa los campos obligatorios" message on submit.
+  const fullNameError = touched.fullName && form.fullName.trim().length > 0 && !isValidFullName(form.fullName)
+    ? 'Ingresa un nombre válido.' : null;
+  const emailError = touched.email && form.email.trim().length > 0 && !isValidEmail(form.email)
+    ? 'Ingresa un correo electrónico válido.' : null;
+  const normalizedPhone = normalizeChileanMobile(form.phoneDigits);
+  const phoneError = touched.phone && form.phoneDigits.length > 0 && !isValidChileanMobile(normalizedPhone)
+    ? 'Ingresa un celular chileno válido.' : null;
+
   function updateField<K extends keyof CheckoutForm>(field: K, value: CheckoutForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function markTouched(field: keyof TouchedFields) {
+    setTouched((current) => ({ ...current, [field]: true }));
   }
 
   function updateRegion(region: string) {
@@ -97,12 +139,32 @@ export default function FinalizarCompraPage() {
     setForm((current) => ({ ...current, billingRegion: region, billingComuna: '' }));
   }
 
+  function updateDeliveryMethod(deliveryMethod: DeliveryMethod) {
+    setForm((current) => {
+      if (deliveryMethod === 'store_pickup') {
+        // Retiro en tienda has no despacho address, so the "usar misma
+        // dirección" convenience makes no sense — force it off and clear
+        // whatever billing address might have been synced from shipping,
+        // rather than let a now-nonexistent shipping address linger as a
+        // stale billing address.
+        return {
+          ...current,
+          deliveryMethod,
+          useSameAddressForBilling: false,
+          billingRegion: '', billingComuna: '', billingAddress: '', billingNumber: '', billingUnit: '',
+        };
+      }
+      return { ...current, deliveryMethod };
+    });
+  }
+
   // "Usar misma dirección de despacho": while checked, billing address
   // fields stay mirrored to shipping — including when the buyer edits
   // shipping *after* checking the box. Unchecking lets them diverge; the
-  // buyer can always re-check to resync.
+  // buyer can always re-check to resync. Never runs for store_pickup — the
+  // checkbox is hidden and forced off there (see updateDeliveryMethod).
   useEffect(() => {
-    if (!form.useSameAddressForBilling) return;
+    if (!isShipping || !form.useSameAddressForBilling) return;
     setForm((current) => {
       if (
         current.billingRegion === current.region
@@ -121,13 +183,30 @@ export default function FinalizarCompraPage() {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.useSameAddressForBilling, form.region, form.comuna, form.address, form.number, form.unit]);
+  }, [isShipping, form.useSameAddressForBilling, form.region, form.comuna, form.address, form.number, form.unit]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setErrorMessage(null);
+    setTouched({ fullName: true, email: true, phone: true });
 
-    if (!form.fullName.trim() || !form.email.trim() || !form.phone.trim() || !form.region.trim() || !form.comuna.trim() || !form.address.trim() || !form.number.trim()) {
+    if (!form.fullName.trim() || !form.email.trim() || !form.phoneDigits.trim()) {
+      setErrorMessage('Completa todos los campos obligatorios.');
+      return;
+    }
+    if (!isValidFullName(form.fullName)) {
+      setErrorMessage('Ingresa un nombre válido.');
+      return;
+    }
+    if (!isValidEmail(form.email)) {
+      setErrorMessage('Ingresa un correo electrónico válido.');
+      return;
+    }
+    if (!isValidChileanMobile(normalizedPhone)) {
+      setErrorMessage('Ingresa un celular chileno válido.');
+      return;
+    }
+    if (isShipping && (!form.region.trim() || !form.comuna.trim() || !form.address.trim() || !form.number.trim())) {
       setErrorMessage('Completa todos los campos obligatorios.');
       return;
     }
@@ -152,16 +231,18 @@ export default function FinalizarCompraPage() {
           customer: {
             fullName: form.fullName.trim(),
             email: form.email.trim(),
-            phone: form.phone.trim(),
-            shippingAddress: {
+            phone: normalizedPhone,
+            deliveryMethod: form.deliveryMethod,
+            shippingAddress: isShipping ? {
               region: form.region.trim(),
               comuna: form.comuna.trim(),
               address: form.address.trim(),
               number: form.number.trim(),
               unit: form.unit.trim() || null,
-            },
+              sector: form.sector.trim() || null,
+            } : null,
             deliveryNotes: form.deliveryNotes.trim() || null,
-            preferredCarrier: form.preferredCarrier,
+            preferredCarrier: isShipping ? form.preferredCarrier : null,
             billingDocumentType: form.billingDocumentType,
             billingData: isFactura ? {
               rut: form.billingRut.trim(),
@@ -214,89 +295,160 @@ export default function FinalizarCompraPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className={labelClass} htmlFor="fullName">Nombre completo</label>
-                  <input id="fullName" required maxLength={120} className={inputClass} value={form.fullName} onChange={(event) => updateField('fullName', event.target.value)} />
+                  <input
+                    id="fullName" required maxLength={120}
+                    className={fullNameError ? errorInputClass : inputClass}
+                    value={form.fullName}
+                    onChange={(event) => updateField('fullName', event.target.value)}
+                    onBlur={() => markTouched('fullName')}
+                    aria-invalid={!!fullNameError}
+                  />
+                  {fullNameError && <p className={fieldErrorClass}>{fullNameError}</p>}
                 </div>
                 <div>
                   <label className={labelClass} htmlFor="email">Email</label>
-                  <input id="email" type="email" required maxLength={200} className={inputClass} value={form.email} onChange={(event) => updateField('email', event.target.value)} />
+                  <input
+                    id="email" type="email" required maxLength={200}
+                    className={emailError ? errorInputClass : inputClass}
+                    value={form.email}
+                    onChange={(event) => updateField('email', event.target.value)}
+                    onBlur={() => markTouched('email')}
+                    aria-invalid={!!emailError}
+                  />
+                  {emailError && <p className={fieldErrorClass}>{emailError}</p>}
                 </div>
                 <div>
                   <label className={labelClass} htmlFor="phone">Teléfono</label>
-                  <input id="phone" type="tel" required maxLength={40} className={inputClass} value={form.phone} onChange={(event) => updateField('phone', event.target.value)} />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
-              <h2 className="text-base font-bold text-insumos-ink">2. Dirección de despacho</h2>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={labelClass} htmlFor="region">Región</label>
-                  <select id="region" required className={inputClass} value={form.region} onChange={(event) => updateRegion(event.target.value)}>
-                    <option value="">Selecciona una región</option>
-                    {REGION_NAMES.map((region) => <option key={region} value={region}>{region}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor="comuna">Comuna</label>
-                  <select id="comuna" required disabled={!form.region} className={inputClass} value={form.comuna} onChange={(event) => updateField('comuna', event.target.value)}>
-                    <option value="">{form.region ? 'Selecciona una comuna' : 'Elige primero una región'}</option>
-                    {comunasForRegion.map((comuna) => <option key={comuna} value={comuna}>{comuna}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor="address">Dirección</label>
-                  <input id="address" required maxLength={200} className={inputClass} value={form.address} onChange={(event) => updateField('address', event.target.value)} />
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor="number">Número</label>
-                  <input id="number" required maxLength={20} className={inputClass} value={form.number} onChange={(event) => updateField('number', event.target.value)} />
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor="unit">Departamento/casa (opcional)</label>
-                  <input id="unit" maxLength={100} className={inputClass} value={form.unit} onChange={(event) => updateField('unit', event.target.value)} />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={labelClass} htmlFor="deliveryNotes">Indicaciones de entrega (opcional)</label>
-                  <textarea id="deliveryNotes" maxLength={500} rows={3} className={inputClass} value={form.deliveryNotes} onChange={(event) => updateField('deliveryNotes', event.target.value)} />
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="flex-shrink-0 rounded-lg border border-insumos-line bg-insumos-cream px-3 py-2.5 text-sm font-semibold text-insumos-ink">
+                      {CHILE_COUNTRY_CODE}
+                    </span>
+                    <input
+                      id="phone" type="tel" inputMode="numeric" required placeholder="9 1234 5678" maxLength={9}
+                      className={(phoneError ? errorInputClass : inputClass) + ' mt-0'}
+                      value={form.phoneDigits}
+                      onChange={(event) => updateField('phoneDigits', sanitizeNationalDigits(event.target.value))}
+                      onBlur={() => markTouched('phone')}
+                      aria-invalid={!!phoneError}
+                    />
+                  </div>
+                  {phoneError && <p className={fieldErrorClass}>{phoneError}</p>}
                 </div>
               </div>
             </div>
 
             <div className="space-y-3 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
-              <h2 className="text-base font-bold text-insumos-ink">3. Transportista</h2>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {PREFERRED_CARRIERS.map((carrier) => (
+              <h2 className="text-base font-bold text-insumos-ink">2. Forma de entrega</h2>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {DELIVERY_METHODS.map((method) => (
                   <label
-                    key={carrier}
+                    key={method}
                     className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                      form.preferredCarrier === carrier ? 'border-insumos-forest bg-insumos-mint text-insumos-forest' : 'border-insumos-line text-stone-600 hover:bg-insumos-cream'
+                      form.deliveryMethod === method ? 'border-insumos-forest bg-insumos-mint text-insumos-forest' : 'border-insumos-line text-stone-600 hover:bg-insumos-cream'
                     }`}
                   >
                     <input
                       type="radio"
-                      name="preferredCarrier"
-                      value={carrier}
-                      checked={form.preferredCarrier === carrier}
-                      onChange={() => updateField('preferredCarrier', carrier)}
+                      name="deliveryMethod"
+                      value={method}
+                      checked={form.deliveryMethod === method}
+                      onChange={() => updateDeliveryMethod(method)}
                       className="sr-only"
                     />
-                    {CARRIER_LABELS[carrier]}
+                    {method === 'shipping' ? <Truck className="h-4 w-4" aria-hidden /> : <Store className="h-4 w-4" aria-hidden />}
+                    {DELIVERY_METHOD_LABELS[method]}
                   </label>
                 ))}
               </div>
-              <div className="flex items-start gap-2 rounded-lg bg-insumos-cream px-4 py-3 text-sm text-stone-600">
-                <Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-insumos-sage" aria-hidden />
-                {shippingPolicy === 'free' ? (
-                  <span>Envío gratis mediante uno de nuestros transportistas disponibles. Tu preferencia queda registrada, pero ArteInsumos podría usar otro transportista si fuera necesario para completar tu envío.</span>
-                ) : (
-                  <span>Para pedidos menores a {formatPrice(FREE_SHIPPING_THRESHOLD)}, el envío se despacha por pagar mediante el transportista que selecciones.</span>
-                )}
-              </div>
+              {!isShipping && (
+                <div className="flex items-start gap-2 rounded-lg bg-insumos-mint px-4 py-3 text-sm text-insumos-forest">
+                  <Store className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
+                  <div>
+                    <p className="font-semibold">Retiro en tienda — Gratis</p>
+                    <p className="mt-0.5 text-insumos-forest/80">Te avisaremos cuando tu pedido esté listo para retirar.</p>
+                  </div>
+                </div>
+              )}
             </div>
 
+            {isShipping && (
+              <div className="space-y-4 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
+                <h2 className="text-base font-bold text-insumos-ink">{addressSectionNumber}. Dirección de despacho</h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass} htmlFor="region">Región</label>
+                    <select id="region" required className={inputClass} value={form.region} onChange={(event) => updateRegion(event.target.value)}>
+                      <option value="">Selecciona una región</option>
+                      {REGION_NAMES.map((region) => <option key={region} value={region}>{region}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass} htmlFor="comuna">Comuna</label>
+                    <select id="comuna" required disabled={!form.region} className={inputClass} value={form.comuna} onChange={(event) => updateField('comuna', event.target.value)}>
+                      <option value="">{form.region ? 'Selecciona una comuna' : 'Elige primero una región'}</option>
+                      {comunasForRegion.map((comuna) => <option key={comuna} value={comuna}>{comuna}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass} htmlFor="address">Dirección</label>
+                    <input id="address" required maxLength={200} className={inputClass} value={form.address} onChange={(event) => updateField('address', event.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelClass} htmlFor="number">Número</label>
+                    <input id="number" required maxLength={20} className={inputClass} value={form.number} onChange={(event) => updateField('number', event.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelClass} htmlFor="sector">Villa / población / sector (opcional)</label>
+                    <input id="sector" maxLength={100} className={inputClass} value={form.sector} onChange={(event) => updateField('sector', event.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelClass} htmlFor="unit">Departamento/casa (opcional)</label>
+                    <input id="unit" maxLength={100} className={inputClass} value={form.unit} onChange={(event) => updateField('unit', event.target.value)} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelClass} htmlFor="deliveryNotes">Indicaciones de entrega (opcional)</label>
+                    <textarea id="deliveryNotes" maxLength={500} rows={3} className={inputClass} value={form.deliveryNotes} onChange={(event) => updateField('deliveryNotes', event.target.value)} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isShipping && (
+              <div className="space-y-3 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
+                <h2 className="text-base font-bold text-insumos-ink">{carrierSectionNumber}. Transportista</h2>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {PREFERRED_CARRIERS.map((carrier) => (
+                    <label
+                      key={carrier}
+                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                        form.preferredCarrier === carrier ? 'border-insumos-forest bg-insumos-mint text-insumos-forest' : 'border-insumos-line text-stone-600 hover:bg-insumos-cream'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="preferredCarrier"
+                        value={carrier}
+                        checked={form.preferredCarrier === carrier}
+                        onChange={() => updateField('preferredCarrier', carrier)}
+                        className="sr-only"
+                      />
+                      {CARRIER_LABELS[carrier]}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex items-start gap-2 rounded-lg bg-insumos-cream px-4 py-3 text-sm text-stone-600">
+                  <Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-insumos-sage" aria-hidden />
+                  {shippingPolicy === 'free' ? (
+                    <span>Envío gratis mediante uno de nuestros transportistas disponibles. Tu preferencia queda registrada, pero ArteInsumos podría usar otro transportista si fuera necesario para completar tu envío.</span>
+                  ) : (
+                    <span>Para pedidos menores a {formatPrice(FREE_SHIPPING_THRESHOLD)}, el envío se despacha por pagar mediante el transportista que selecciones.</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4 rounded-2xl border border-insumos-line bg-white p-5 sm:p-6">
-              <h2 className="text-base font-bold text-insumos-ink">4. Documento tributario</h2>
+              <h2 className="text-base font-bold text-insumos-ink">{documentSectionNumber}. Documento tributario</h2>
               <div className="grid grid-cols-2 gap-2">
                 {BILLING_DOCUMENT_TYPES.map((docType) => (
                   <label
@@ -340,42 +492,44 @@ export default function FinalizarCompraPage() {
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-2 text-sm font-semibold text-insumos-ink">
-                    <input
-                      type="checkbox"
-                      checked={form.useSameAddressForBilling}
-                      onChange={(event) => updateField('useSameAddressForBilling', event.target.checked)}
-                      className="h-4 w-4 rounded border-insumos-line text-insumos-forest focus:ring-insumos-mint"
-                    />
-                    Usar misma dirección de despacho
-                  </label>
+                  {isShipping && (
+                    <label className="flex items-center gap-2 text-sm font-semibold text-insumos-ink">
+                      <input
+                        type="checkbox"
+                        checked={form.useSameAddressForBilling}
+                        onChange={(event) => updateField('useSameAddressForBilling', event.target.checked)}
+                        className="h-4 w-4 rounded border-insumos-line text-insumos-forest focus:ring-insumos-mint"
+                      />
+                      Usar misma dirección de despacho
+                    </label>
+                  )}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className={labelClass} htmlFor="billingRegion">Región</label>
-                      <select id="billingRegion" required disabled={form.useSameAddressForBilling} className={inputClass} value={form.billingRegion} onChange={(event) => updateBillingRegion(event.target.value)}>
+                      <select id="billingRegion" required disabled={isShipping && form.useSameAddressForBilling} className={inputClass} value={form.billingRegion} onChange={(event) => updateBillingRegion(event.target.value)}>
                         <option value="">Selecciona una región</option>
                         {REGION_NAMES.map((region) => <option key={region} value={region}>{region}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className={labelClass} htmlFor="billingComuna">Comuna</label>
-                      <select id="billingComuna" required disabled={form.useSameAddressForBilling || !form.billingRegion} className={inputClass} value={form.billingComuna} onChange={(event) => updateField('billingComuna', event.target.value)}>
+                      <select id="billingComuna" required disabled={(isShipping && form.useSameAddressForBilling) || !form.billingRegion} className={inputClass} value={form.billingComuna} onChange={(event) => updateField('billingComuna', event.target.value)}>
                         <option value="">{form.billingRegion ? 'Selecciona una comuna' : 'Elige primero una región'}</option>
                         {billingComunasForRegion.map((comuna) => <option key={comuna} value={comuna}>{comuna}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className={labelClass} htmlFor="billingAddress">Dirección</label>
-                      <input id="billingAddress" required disabled={form.useSameAddressForBilling} maxLength={200} className={inputClass} value={form.billingAddress} onChange={(event) => updateField('billingAddress', event.target.value)} />
+                      <input id="billingAddress" required disabled={isShipping && form.useSameAddressForBilling} maxLength={200} className={inputClass} value={form.billingAddress} onChange={(event) => updateField('billingAddress', event.target.value)} />
                     </div>
                     <div>
                       <label className={labelClass} htmlFor="billingNumber">Número</label>
-                      <input id="billingNumber" required disabled={form.useSameAddressForBilling} maxLength={20} className={inputClass} value={form.billingNumber} onChange={(event) => updateField('billingNumber', event.target.value)} />
+                      <input id="billingNumber" required disabled={isShipping && form.useSameAddressForBilling} maxLength={20} className={inputClass} value={form.billingNumber} onChange={(event) => updateField('billingNumber', event.target.value)} />
                     </div>
                     <div>
                       <label className={labelClass} htmlFor="billingUnit">Oficina/local/depto (opcional)</label>
-                      <input id="billingUnit" disabled={form.useSameAddressForBilling} maxLength={100} className={inputClass} value={form.billingUnit} onChange={(event) => updateField('billingUnit', event.target.value)} />
+                      <input id="billingUnit" disabled={isShipping && form.useSameAddressForBilling} maxLength={100} className={inputClass} value={form.billingUnit} onChange={(event) => updateField('billingUnit', event.target.value)} />
                     </div>
                   </div>
                 </div>
@@ -425,26 +579,41 @@ export default function FinalizarCompraPage() {
                 <span>Subtotal productos</span>
                 <span>{formatPrice(subtotal)}</span>
               </div>
-              <div className="flex items-center justify-between text-stone-600">
-                <span>Despacho</span>
-                <span className={shippingPolicy === 'free' ? 'font-semibold text-insumos-forest' : ''}>{shippingPolicy === 'free' ? 'GRATIS' : 'Por pagar'}</span>
-              </div>
+              {isShipping ? (
+                <div className="flex items-center justify-between text-stone-600">
+                  <span>Despacho</span>
+                  <span className={shippingPolicy === 'free' ? 'font-semibold text-insumos-forest' : ''}>{shippingPolicy === 'free' ? 'GRATIS' : 'Por pagar'}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between text-stone-600">
+                    <span>Entrega</span>
+                    <span>Retiro en tienda</span>
+                  </div>
+                  <div className="flex items-center justify-between text-stone-600">
+                    <span>Costo</span>
+                    <span className="font-semibold text-insumos-forest">GRATIS</span>
+                  </div>
+                </>
+              )}
             </div>
 
-            {shippingPolicy === 'free' ? (
-              <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-insumos-mint px-3 py-2 text-xs font-semibold text-insumos-forest">
-                <CheckCircle2 className="h-4 w-4 flex-shrink-0" aria-hidden />
-                ¡Tu pedido tiene envío gratis!
-              </p>
-            ) : (
-              <div className="mt-3 rounded-lg bg-insumos-cream px-3 py-2.5">
-                <p className="text-xs font-semibold text-insumos-ink">
-                  Te faltan {formatPrice(remainderForFreeShipping)} para obtener envío gratis.
+            {isShipping && (
+              shippingPolicy === 'free' ? (
+                <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-insumos-mint px-3 py-2 text-xs font-semibold text-insumos-forest">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" aria-hidden />
+                  ¡Tu pedido tiene envío gratis!
                 </p>
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-insumos-line">
-                  <div className="h-full rounded-full bg-insumos-forest transition-all" style={{ width: `${Math.min((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 100)}%` }} />
+              ) : (
+                <div className="mt-3 rounded-lg bg-insumos-cream px-3 py-2.5">
+                  <p className="text-xs font-semibold text-insumos-ink">
+                    Te faltan {formatPrice(remainderForFreeShipping)} para obtener envío gratis.
+                  </p>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-insumos-line">
+                    <div className="h-full rounded-full bg-insumos-forest transition-all" style={{ width: `${Math.min((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 100)}%` }} />
+                  </div>
                 </div>
-              </div>
+              )
             )}
 
             <div className="mt-3 flex items-center justify-between border-t border-insumos-line pt-3 text-base font-extrabold text-insumos-ink">
@@ -452,9 +621,11 @@ export default function FinalizarCompraPage() {
               <span>{formatPrice(subtotal)}</span>
             </div>
             <p className="mt-3 text-xs text-stone-500">
-              {shippingPolicy === 'free'
-                ? 'El envío está incluido en este total.'
-                : 'El costo de despacho se paga aparte, directamente al transportista, y no está incluido en este total.'}
+              {!isShipping
+                ? 'Retira tu pedido sin costo en tienda.'
+                : shippingPolicy === 'free'
+                  ? 'El envío está incluido en este total.'
+                  : 'El costo de despacho se paga aparte, directamente al transportista, y no está incluido en este total.'}
             </p>
           </aside>
         </form>

@@ -63,12 +63,18 @@ export default async function OrderConfirmationPage({ params, searchParams }: Co
               <dd className="capitalize">{order.billingDocumentType}</dd>
             </div>
             <div>
-              <dt className="font-semibold text-insumos-ink">Transportista preferido</dt>
-              <dd>{order.preferredCarrier ? CARRIER_LABELS[order.preferredCarrier] : 'No especificado'}</dd>
+              <dt className="font-semibold text-insumos-ink">Forma de entrega</dt>
+              <dd>{order.deliveryMethod === 'store_pickup' ? 'Retiro en tienda' : 'Despacho'}</dd>
             </div>
+            {order.deliveryMethod === 'shipping' && (
+              <div>
+                <dt className="font-semibold text-insumos-ink">Transportista preferido</dt>
+                <dd>{order.preferredCarrier ? CARRIER_LABELS[order.preferredCarrier] : 'No especificado'}</dd>
+              </div>
+            )}
             <div>
               <dt className="font-semibold text-insumos-ink">Despacho</dt>
-              <dd>{order.shippingPolicy === 'free' ? 'Envío gratis' : 'Envío por pagar'}</dd>
+              <dd>{order.shippingPolicy === 'pickup' ? 'Gratis (retiro en tienda)' : order.shippingPolicy === 'free' ? 'Envío gratis' : 'Envío por pagar'}</dd>
             </div>
             {order.billingDocumentType === 'factura' && order.billingData && (
               <div>
@@ -99,8 +105,8 @@ export default async function OrderConfirmationPage({ params, searchParams }: Co
               <span>{formatPrice(order.subtotal)}</span>
             </div>
             <div className="flex items-center justify-between text-stone-600">
-              <span>Despacho</span>
-              <span>{order.shippingPolicy === 'free' ? 'Gratis' : 'Por pagar'}</span>
+              <span>{order.deliveryMethod === 'store_pickup' ? 'Entrega' : 'Despacho'}</span>
+              <span>{order.shippingPolicy === 'pickup' ? 'Retiro en tienda — Gratis' : order.shippingPolicy === 'free' ? 'Gratis' : 'Por pagar'}</span>
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between border-t border-insumos-line pt-3 text-base font-extrabold text-insumos-ink">
@@ -108,9 +114,11 @@ export default async function OrderConfirmationPage({ params, searchParams }: Co
             <span>{formatPrice(order.total)}</span>
           </div>
           <p className="mt-3 text-xs text-stone-500">
-            {order.shippingPolicy === 'free'
-              ? 'El envío está incluido en este total.'
-              : 'El costo de despacho se paga aparte, directamente al transportista, y no está incluido en este total.'}
+            {order.shippingPolicy === 'pickup'
+              ? 'Retira tu pedido sin costo en tienda.'
+              : order.shippingPolicy === 'free'
+                ? 'El envío está incluido en este total.'
+                : 'El costo de despacho se paga aparte, directamente al transportista, y no está incluido en este total.'}
           </p>
         </div>
 

@@ -22,6 +22,8 @@ const reservationsFixMigrationPath = new URL('supabase/migrations/20260831202912
 // version Supabase actually assigns once approved and applied, same as
 // every migration before it in this feature.
 const checkoutV2MigrationPath = new URL('supabase/migrations/20260831225244_insumos_checkout_v2_shipping_billing.sql', root);
+// Placeholder filename, not applied yet — same rename-after-apply pattern.
+const checkoutV21MigrationPath = new URL('supabase/migrations/20260901000549_insumos_checkout_v21_delivery_validation.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -438,7 +440,7 @@ test('checkout requires complete buyer and shipping data with a real email and b
   const base = { phone: '+56911111111', shippingAddress: validAddress, preferredCarrier: 'starken' };
   assert.throws(() => assertValidCustomer(null), /obligatorios/);
   assert.throws(() => assertValidCustomer({ ...base, fullName: '', email: 'a@b.com' }), /nombre/);
-  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Test Client TEST', email: 'not-an-email' }), /email no es válido/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Test Client TEST', email: 'not-an-email' }), /correo electrónico válido/);
   assert.throws(() => assertValidCustomer({ ...base, fullName: 'Test Client TEST', email: 'a@b.com', shippingAddress: { ...validAddress, comuna: '' } }), /comuna/);
   assert.throws(() => assertValidCustomer({ ...base, fullName: 'a'.repeat(200), email: 'a@b.com' }), /demasiado largo/);
   const ok = assertValidCustomer({ ...base, fullName: ' Test Client TEST ', email: ' a@b.com ', deliveryNotes: '  ' });
@@ -1111,8 +1113,8 @@ test('/finalizar-compra resets the selected comuna whenever región changes, and
 test('/finalizar-compra keeps billing address synced to shipping while "usar misma dirección" is checked, and stops syncing once unchecked', async () => {
   const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
   assert.match(page, /useSameAddressForBilling/);
-  assert.match(page, /if \(!form\.useSameAddressForBilling\) return;/);
-  assert.match(page, /disabled=\{form\.useSameAddressForBilling\}/);
+  assert.match(page, /if \(!isShipping \|\| !form\.useSameAddressForBilling\) return;/);
+  assert.match(page, /disabled=\{isShipping && form\.useSameAddressForBilling\}/);
 });
 
 test('checkout V2 modules (region/comuna, RUT, shipping policy) stay isolated from legacy Artesellos and never hardcode a payment/transport-carrier API endpoint', async () => {
@@ -1120,6 +1122,278 @@ test('checkout V2 modules (region/comuna, RUT, shipping policy) stay isolated fr
     'src/features/checkout/regionComuna.ts',
     'src/features/checkout/rut.ts',
     'src/features/checkout/shipping.ts',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/app\/checkout|checkout\/mp|NEXT_PUBLIC_SUPABASE|Mercado ?Pago|mercadopago|starken\.cl|chilexpress\.cl|blueexpress|https?:\/\//i;
+  for (const source of files) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
+});
+
+// ==========================================================================
+// Checkout V2.1: name/email/phone validation, villa/población/sector, and
+// store_pickup as a second delivery method alongside shipping.
+// ==========================================================================
+
+test('full-name validation: accepts real Spanish names with accents/ñ/apostrophe/hyphen, rejects digits and symbols', async () => {
+  const { isValidFullName, normalizeFullName } = await loadTypeScript('src/features/checkout/name.ts');
+  assert.equal(isValidFullName('María José Pérez'), true);
+  assert.equal(isValidFullName("José O'Neill"), true);
+  assert.equal(isValidFullName('Ana-María Muñoz'), true);
+  assert.equal(isValidFullName('Juan Carlos Gaete'), true);
+  assert.equal(isValidFullName('524545545'), false);
+  assert.equal(isValidFullName('Juan123'), false);
+  assert.equal(isValidFullName('@@Pedro'), false);
+  assert.equal(isValidFullName(''), false);
+  assert.equal(isValidFullName('   '), false);
+  assert.equal(isValidFullName('A'), false); // below MIN_FULL_NAME_LENGTH
+  assert.equal(normalizeFullName('  Juan   Carlos   Gaete  '), 'Juan Carlos Gaete');
+});
+
+test('email validation: accepts a real address, rejects garbage/missing-domain/missing-TLD/space-separated inputs', async () => {
+  const { isValidEmail, normalizeEmail } = await loadTypeScript('src/features/checkout/email.ts');
+  assert.equal(isValidEmail('usuario@gmail.com'), true);
+  assert.equal(isValidEmail('dsWADSadsa'), false);
+  assert.equal(isValidEmail('usuario@'), false);
+  assert.equal(isValidEmail('usuario@gmail'), false);
+  assert.equal(isValidEmail('usuario gmail.com'), false);
+  assert.equal(normalizeEmail('  Usuario@Gmail.COM  '), 'usuario@gmail.com');
+});
+
+test('Chilean mobile phone: normalizes national digits to +56 form, validates 9-digit mobile numbers starting with 9, rejects letters/wrong length/non-mobile', async () => {
+  const { normalizeChileanMobile, isValidChileanMobile, sanitizeNationalDigits, extractDigits, CHILE_COUNTRY_CODE } = await loadTypeScript('src/features/checkout/phone.ts');
+  assert.equal(CHILE_COUNTRY_CODE, '+56');
+  assert.equal(normalizeChileanMobile('912345678'), '+56912345678');
+  assert.equal(isValidChileanMobile('+56912345678'), true);
+  assert.equal(isValidChileanMobile('+56812345678'), false); // doesn't start with 9
+  assert.equal(isValidChileanMobile('+5691234567'), false); // 8 digits, too short
+  assert.equal(isValidChileanMobile('+569123456789'), false); // 10 digits, too long
+  assert.equal(isValidChileanMobile('+56abc345678'), false); // letters
+  assert.equal(isValidChileanMobile('56912345678'), false); // missing '+'
+  // Paste-safe: formatted/pasted input reduces to digits-only, capped at 9.
+  assert.equal(sanitizeNationalDigits('9 1234 5678'), '912345678');
+  assert.equal(sanitizeNationalDigits('abc9123456789xyz'), '912345678');
+  assert.equal(extractDigits('+56 9 1234-5678'), '56912345678');
+});
+
+test('RUT fixtures: 76.123.456-0 and 11.111.111-1 are mathematically valid; 11.111.111-2 is not — no fixture is hardcoded as "looks fake, reject it"', async () => {
+  const { isValidRut, normalizeRut } = await loadTypeScript('src/features/checkout/rut.ts');
+  assert.equal(isValidRut('76.123.456-0'), true);
+  assert.equal(isValidRut('76.123.456-6'), false); // wrong check digit for this body
+  assert.equal(isValidRut('11.111.111-1'), true);
+  assert.equal(isValidRut('11.111.111-2'), false);
+  assert.equal(normalizeRut('76.123.456-0'), '761234560');
+});
+
+test('checkout: full name and email are validated against the real Unicode/format rules, not just non-empty', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const validAddress = { region: 'Región Metropolitana de Santiago', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  const base = { email: 'a@b.com', phone: '+56912345678', shippingAddress: validAddress, preferredCarrier: 'starken' };
+
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Juan123' }), /nombre válido/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: '524545545' }), /nombre válido/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: '@@Pedro' }), /nombre válido/);
+  assert.doesNotThrow(() => assertValidCustomer({ ...base, fullName: 'María José Pérez' }));
+  assert.doesNotThrow(() => assertValidCustomer({ ...base, fullName: "José O'Neill" }));
+
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Juan Pérez', email: 'dsWADSadsa' }), /correo electrónico válido/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Juan Pérez', email: 'usuario@' }), /correo electrónico válido/);
+  assert.throws(() => assertValidCustomer({ ...base, fullName: 'Juan Pérez', email: 'usuario@gmail' }), /correo electrónico válido/);
+});
+
+test('checkout: phone must be a valid +56 Chilean mobile — letters, wrong length and non-mobile numbers are all rejected server-side', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const validAddress = { region: 'Región Metropolitana de Santiago', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  const base = { fullName: 'Juan Pérez', email: 'a@b.com', shippingAddress: validAddress, preferredCarrier: 'starken' };
+
+  assert.throws(() => assertValidCustomer({ ...base, phone: '+56abcabcabc' }), /celular chileno válido/);
+  assert.throws(() => assertValidCustomer({ ...base, phone: '+5691234567' }), /celular chileno válido/); // too short
+  assert.throws(() => assertValidCustomer({ ...base, phone: '+56812345678' }), /celular chileno válido/); // landline-shaped, not mobile
+  assert.doesNotThrow(() => assertValidCustomer({ ...base, phone: '+56912345678' }));
+});
+
+test('delivery method: shipping requires region/comuna/address/number/carrier; store_pickup requires none of them and leaves shippingAddress/preferredCarrier null', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const validAddress = { region: 'Región Metropolitana de Santiago', comuna: 'Santiago', address: 'Calle Falsa', number: '123' };
+  const contact = { fullName: 'Juan Pérez', email: 'a@b.com', phone: '+56912345678' };
+
+  // shipping (explicit or default) still requires the full despacho contract.
+  assert.throws(() => assertValidCustomer({ ...contact, deliveryMethod: 'shipping', shippingAddress: { ...validAddress, region: '' }, preferredCarrier: 'starken' }), /región/);
+  assert.throws(() => assertValidCustomer({ ...contact, deliveryMethod: 'shipping', shippingAddress: { ...validAddress, comuna: '' }, preferredCarrier: 'starken' }), /comuna/);
+  assert.throws(() => assertValidCustomer({ ...contact, deliveryMethod: 'shipping', shippingAddress: { ...validAddress, address: '' }, preferredCarrier: 'starken' }), /dirección/);
+  assert.throws(() => assertValidCustomer({ ...contact, deliveryMethod: 'shipping', shippingAddress: { ...validAddress, number: '' }, preferredCarrier: 'starken' }), /número/);
+  assert.throws(() => assertValidCustomer({ ...contact, deliveryMethod: 'shipping', shippingAddress: validAddress, preferredCarrier: undefined }), /transportista/);
+
+  // store_pickup needs none of that — no address, no carrier.
+  const pickup = assertValidCustomer({ ...contact, deliveryMethod: 'store_pickup' });
+  assert.equal(pickup.deliveryMethod, 'store_pickup');
+  assert.equal(pickup.shippingAddress, null);
+  assert.equal(pickup.preferredCarrier, null);
+
+  // Whatever a manipulated client sends for address/carrier under store_pickup is discarded, not validated or trusted.
+  const pickupWithJunk = assertValidCustomer({ ...contact, deliveryMethod: 'store_pickup', shippingAddress: { region: 'nonsense', comuna: 'nonsense' }, preferredCarrier: 'not-a-real-carrier' });
+  assert.equal(pickupWithJunk.shippingAddress, null);
+  assert.equal(pickupWithJunk.preferredCarrier, null);
+
+  // Not sending deliveryMethod at all still defaults to shipping, matching the UI's own default.
+  assert.throws(() => assertValidCustomer({ ...contact, shippingAddress: validAddress, preferredCarrier: undefined }), /transportista/);
+});
+
+test('villa/población/sector: optional, persisted only for shipping, and never invented for store_pickup', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const validAddress = { region: 'Región Metropolitana de Santiago', comuna: 'Santiago', address: 'Calle Falsa', number: '123', sector: 'Villa Los Aromos' };
+  const contact = { fullName: 'Juan Pérez', email: 'a@b.com', phone: '+56912345678', preferredCarrier: 'starken' };
+
+  const withSector = assertValidCustomer({ ...contact, deliveryMethod: 'shipping', shippingAddress: validAddress });
+  assert.equal(withSector.shippingAddress.sector, 'Villa Los Aromos');
+
+  const withoutSector = assertValidCustomer({ ...contact, deliveryMethod: 'shipping', shippingAddress: { region: validAddress.region, comuna: validAddress.comuna, address: validAddress.address, number: validAddress.number } });
+  assert.equal(withoutSector.shippingAddress.sector, null);
+});
+
+test('factura + store_pickup: billing data must be supplied explicitly — there is no despacho address to fall back to, so an incomplete billing address is rejected, not silently contaminated', async () => {
+  const { assertValidCustomer } = await loadTypeScript('src/features/checkout/validation.ts');
+  const contact = { fullName: 'Juan Pérez', email: 'a@b.com', phone: '+56912345678', deliveryMethod: 'store_pickup', billingDocumentType: 'factura' };
+  const validBilling = {
+    rut: '76.123.456-0', businessName: 'Mi Empresa SPA', businessActivity: 'Venta de insumos',
+    email: 'facturacion@empresa.cl', region: 'Región Metropolitana de Santiago', comuna: 'Providencia', address: 'Av. Siempre Viva', number: '742',
+  };
+
+  // Omitting billing region/comuna/address/number has nothing to fall back
+  // to under store_pickup (unlike shipping, where it could copy the
+  // despacho address) — the resulting empty string must be rejected.
+  assert.throws(() => assertValidCustomer({ ...contact, billingData: { ...validBilling, region: '', comuna: '', address: '', number: '' } }), /región de facturación/);
+
+  const ok = assertValidCustomer({ ...contact, billingData: validBilling });
+  assert.equal(ok.deliveryMethod, 'store_pickup');
+  assert.equal(ok.shippingAddress, null);
+  assert.equal(ok.billingData.rut, '761234560');
+  assert.equal(ok.billingData.region, 'Región Metropolitana de Santiago');
+});
+
+test('V2.1 migration: delivery_method column, shipping_policy CHECK gains \'pickup\', and a coherence constraint ties delivery_method to shipping_policy/preferred_carrier', async () => {
+  const sql = await readFile(checkoutV21MigrationPath, 'utf8');
+  assert.match(sql, /add column if not exists delivery_method text not null default 'shipping'/);
+  assert.match(sql, /check \(delivery_method in \('shipping', 'store_pickup'\)\)/);
+  assert.match(sql, /drop constraint if exists orders_shipping_policy_check/);
+  assert.match(sql, /check \(shipping_policy in \('free', 'receiver_pays', 'pickup'\)\)/);
+  assert.match(sql, /add constraint orders_delivery_shipping_coherence/);
+  assert.match(sql, /delivery_method = 'store_pickup' and shipping_policy = 'pickup' and preferred_carrier is null/);
+  assert.match(sql, /delivery_method = 'shipping' and shipping_policy in \('free', 'receiver_pays'\) and preferred_carrier is not null/);
+});
+
+test('V2.1 migration: is_valid_full_name/is_valid_email/is_valid_cl_mobile mirror the TS validators exactly', async () => {
+  const sql = await readFile(checkoutV21MigrationPath, 'utf8');
+  const nameFn = sql.match(/create or replace function public\.is_valid_full_name[\s\S]*?\n\$\$;/);
+  assert.ok(nameFn, 'is_valid_full_name not found');
+  assert.match(nameFn[0], /A-Za-zÀ-ÖØ-öø-ÿ/);
+  assert.match(nameFn[0], /length\(p_name\) between 2 and 120/);
+
+  const emailFn = sql.match(/create or replace function public\.is_valid_email[\s\S]*?\n\$\$;/);
+  assert.ok(emailFn, 'is_valid_email not found');
+  assert.match(emailFn[0], /\^\[\^\\s@\]\+@\[\^\\s@\]\+\\\.\[\^\\s@\]\+\$/);
+
+  const phoneFn = sql.match(/create or replace function public\.is_valid_cl_mobile[\s\S]*?\n\$\$;/);
+  assert.ok(phoneFn, 'is_valid_cl_mobile not found');
+  assert.match(phoneFn[0], /\^\\\+569\[0-9\]\{8\}\$/);
+});
+
+test('V2.1 create_pending_order: adds p_delivery_method, derives shipping_policy from delivery_method + subtotal (never from the client), and forces preferred_carrier/shipping_address to null for store_pickup', async () => {
+  const sql = await readFile(checkoutV21MigrationPath, 'utf8');
+  assert.match(sql, /drop function if exists public\.create_pending_order\(jsonb, text, text, text, jsonb, text, text, text, jsonb\);/);
+  const fnMatch = sql.match(/create or replace function public\.create_pending_order[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'V2.1 create_pending_order not found');
+  const fn = fnMatch[0];
+  assert.match(fn, /p_delivery_method text default 'shipping'/);
+  assert.match(fn, /not public\.is_valid_full_name\(trim\(p_customer_name\)\)/);
+  assert.match(fn, /not public\.is_valid_email\(trim\(p_customer_email\)\)/);
+  assert.match(fn, /not public\.is_valid_cl_mobile\(trim\(coalesce\(p_customer_phone, ''\)\)\)/);
+  assert.match(fn, /v_shipping_policy := case\s*\n\s*when v_delivery_method = 'store_pickup' then 'pickup'\s*\n\s*when v_subtotal >= 50000 then 'free'\s*\n\s*else 'receiver_pays'\s*\n\s*end;/);
+  assert.doesNotMatch(fn, /p_shipping_policy/);
+  assert.match(fn, /v_shipping_address := null;\s*\n\s*v_preferred_carrier := null;/);
+  assert.match(sql, /grant execute on function public\.create_pending_order\(jsonb, text, text, text, jsonb, text, text, text, jsonb, text\) to anon, authenticated;/);
+});
+
+test('V2.1 migration stays out of scope: no Mercado Pago, no cron, no emails, no tracking, no transport-carrier APIs, no DTE, no invented pickup-store address', async () => {
+  const sql = await readFile(checkoutV21MigrationPath, 'utf8');
+  const withoutComments = sql.replace(/^\s*--.*$/gm, '');
+  assert.doesNotMatch(withoutComments, /mercado ?pago|mercadopago/i);
+  assert.doesNotMatch(sql, /pg_cron|cron\.schedule/i);
+  assert.doesNotMatch(sql, /resend|sendgrid|nodemailer|smtp/i);
+  assert.doesNotMatch(sql, /starken\.cl|chilexpress\.cl|blueexpress\.cl|https?:\/\//i);
+  assert.doesNotMatch(sql, /documento tributario electrónico|\bdte\b/i);
+  assert.doesNotMatch(sql, /tracking_number|tracking_url/i);
+});
+
+test('/finalizar-compra: "Forma de entrega" toggle renders before the shipping address section, and store_pickup hides despacho fields entirely', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /2\. Forma de entrega/);
+  assert.match(page, /Retiro en tienda — Gratis/);
+  assert.match(page, /Te avisaremos cuando tu pedido esté listo para retirar\./);
+  const formaEntregaIndex = page.indexOf('2. Forma de entrega');
+  const direccionIndex = page.indexOf('Dirección de despacho');
+  assert.ok(formaEntregaIndex >= 0 && direccionIndex > formaEntregaIndex, 'Forma de entrega must render before Dirección de despacho');
+  assert.match(page, /\{isShipping && \(/);
+});
+
+test('/finalizar-compra: villa/población/sector field sits between número and indicaciones de entrega, and is optional', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /htmlFor="sector">Villa \/ población \/ sector \(opcional\)/);
+  const numberIndex = page.indexOf('htmlFor="number">Número');
+  const sectorIndex = page.indexOf('htmlFor="sector">Villa');
+  const notesIndex = page.indexOf('htmlFor="deliveryNotes">Indicaciones de entrega');
+  assert.ok(numberIndex >= 0 && sectorIndex > numberIndex && notesIndex > sectorIndex, 'sector must render between número and indicaciones de entrega');
+});
+
+test('/finalizar-compra: phone input shows a locked +56 prefix and only accepts sanitized national digits', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /\{CHILE_COUNTRY_CODE\}/);
+  assert.match(page, /sanitizeNationalDigits\(event\.target\.value\)/);
+  assert.doesNotMatch(page, /<input[^>]*id="phone"[^>]*onChange=\{\(event\) => updateField\('phone'/);
+});
+
+test('/finalizar-compra: name/email/phone errors only appear after the field is touched, never before, and use the exact required error copy', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /touched\.fullName && form\.fullName\.trim\(\)\.length > 0 && !isValidFullName\(form\.fullName\)/);
+  assert.match(page, /touched\.email && form\.email\.trim\(\)\.length > 0 && !isValidEmail\(form\.email\)/);
+  assert.match(page, /touched\.phone && form\.phoneDigits\.length > 0 && !isValidChileanMobile\(normalizedPhone\)/);
+  assert.match(page, /'Ingresa un nombre válido\.'/);
+  assert.match(page, /'Ingresa un correo electrónico válido\.'/);
+  assert.match(page, /'Ingresa un celular chileno válido\.'/);
+  assert.match(page, /onBlur=\{\(\) => markTouched\('fullName'\)\}/);
+  assert.match(page, /onBlur=\{\(\) => markTouched\('email'\)\}/);
+  assert.match(page, /onBlur=\{\(\) => markTouched\('phone'\)\}/);
+});
+
+test('/finalizar-compra: "usar misma dirección" checkbox only renders for shipping, never for store_pickup', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /\{isShipping && \(\s*\n\s*<label className="flex items-center gap-2 text-sm font-semibold text-insumos-ink">\s*\n\s*<input\s*\n\s*type="checkbox"\s*\n\s*checked=\{form\.useSameAddressForBilling\}/);
+  assert.match(page, /useSameAddressForBilling: false/); // forced off by updateDeliveryMethod on switch to pickup
+});
+
+test('/finalizar-compra: summary panel shows "Retiro en tienda" / GRATIS with no free-shipping progress bar when store_pickup is selected', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /<span>Entrega<\/span>/);
+  assert.match(page, /<span>Retiro en tienda<\/span>/);
+  assert.match(page, /<span>Costo<\/span>/);
+  assert.match(page, /Retira tu pedido sin costo en tienda\./);
+  // The free-shipping progress bar block is gated behind isShipping.
+  const progressBarIndex = page.indexOf('Te faltan {formatPrice(remainderForFreeShipping)}');
+  const isShippingGateIndex = page.lastIndexOf('{isShipping && (', progressBarIndex);
+  assert.ok(isShippingGateIndex >= 0, 'free-shipping progress bar must be gated behind isShipping');
+});
+
+test('/pedido/[id]/confirmacion: shows "Retiro en tienda" for store_pickup orders, hides the carrier line, and never shows "por pagar" for a pickup order', async () => {
+  const page = await readFile(new URL('src/app/pedido/[id]/confirmacion/page.tsx', root), 'utf8');
+  assert.match(page, /order\.deliveryMethod === 'store_pickup' \? 'Retiro en tienda' : 'Despacho'/);
+  assert.match(page, /\{order\.deliveryMethod === 'shipping' && \(/);
+  assert.match(page, /order\.shippingPolicy === 'pickup' \? 'Gratis \(retiro en tienda\)'/);
+});
+
+test('checkout V2.1 modules (name, email, phone) stay isolated from legacy Artesellos and never hardcode a payment/transport-carrier API endpoint', async () => {
+  const files = await Promise.all([
+    'src/features/checkout/name.ts',
+    'src/features/checkout/email.ts',
+    'src/features/checkout/phone.ts',
   ].map((path) => readFile(new URL(path, root), 'utf8')));
   const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/app\/checkout|checkout\/mp|NEXT_PUBLIC_SUPABASE|Mercado ?Pago|mercadopago|starken\.cl|chilexpress\.cl|blueexpress|https?:\/\//i;
   for (const source of files) {

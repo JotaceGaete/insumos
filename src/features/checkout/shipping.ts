@@ -4,10 +4,23 @@
 // duplicating the threshold, not so the client can dictate the outcome.
 export const FREE_SHIPPING_THRESHOLD = 50_000;
 
-export type ShippingPolicy = 'free' | 'receiver_pays';
+// 'pickup' only ever comes from the server, derived from delivery_method —
+// there is no client-side subtotal computation that produces it. Kept in
+// the same union (rather than a separate type) because every place that
+// renders shippingPolicy needs to handle all three outcomes.
+export type ShippingPolicy = 'free' | 'receiver_pays' | 'pickup';
 
-export function computeShippingPolicy(subtotal: number): ShippingPolicy {
+/** Subtotal-only shipping policy for a *shipping* delivery — never call this
+ * for store_pickup, whose policy is always 'pickup' regardless of subtotal. */
+export function computeShippingPolicy(subtotal: number): 'free' | 'receiver_pays' {
   return subtotal >= FREE_SHIPPING_THRESHOLD ? 'free' : 'receiver_pays';
+}
+
+export const DELIVERY_METHODS = ['shipping', 'store_pickup'] as const;
+export type DeliveryMethod = (typeof DELIVERY_METHODS)[number];
+
+export function isValidDeliveryMethod(value: unknown): value is DeliveryMethod {
+  return typeof value === 'string' && (DELIVERY_METHODS as readonly string[]).includes(value);
 }
 
 /** CLP still owed to reach free shipping; 0 once eligible. */

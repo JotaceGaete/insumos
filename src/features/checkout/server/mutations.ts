@@ -24,6 +24,10 @@ const KNOWN_MESSAGE_PATTERNS = [
   /^Selecciona un transportista válido\.$/,
   /^Selecciona un documento tributario válido\.$/,
   /^Los datos de facturación son incompletos o inválidos\.$/,
+  /^Selecciona una forma de entrega válida\.$/,
+  /^Ingresa un nombre válido\.$/,
+  /^Ingresa un correo electrónico válido\.$/,
+  /^Ingresa un celular chileno válido\.$/,
 ];
 
 function toClientMessage(error: unknown): string {
@@ -56,6 +60,7 @@ export async function createPendingOrder(payload: CheckoutPayload): Promise<Crea
     p_preferred_carrier: payload.customer.preferredCarrier,
     p_billing_document_type: payload.customer.billingDocumentType,
     p_billing_data: payload.customer.billingData ?? null,
+    p_delivery_method: payload.customer.deliveryMethod,
   });
   if (error) throw new Error(toClientMessage(error));
 
