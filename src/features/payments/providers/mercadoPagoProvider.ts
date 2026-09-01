@@ -1,5 +1,5 @@
 import 'server-only';
-import type { PaymentProvider, PaymentPreferenceResult } from '../types';
+import type { PaymentDetails, PaymentProvider, PaymentPreferenceResult } from '../types';
 
 // Real implementation, prepared but not connected: without
 // INSUMOS_MP_ACCESS_TOKEN this fails in a controlled way, the same shape as
@@ -58,6 +58,44 @@ export const mercadoPagoProvider: PaymentProvider = {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error creando la preferencia de pago.';
       return { status: 'failed', error: message };
+    }
+  },
+
+  // Authoritative server-side payment lookup — GET /v1/payments/{id} via
+  // the SDK's Payment resource, confirmed against the real, currently
+  // installed mercadopago@2.10.0 type definitions
+  // (node_modules/mercadopago/dist/clients/payment/commonTypes.d.ts).
+  //
+  // Deliberately does NOT expose a preference_id on the normalized result:
+  // the SDK's own PaymentResponse type has no preference_id field at all
+  // (only a bare `order?: { id, type }`, which is Mercado Pago's *merchant
+  // order* id, a different concept). Correlating a payment back to the
+  // preference that created it is not reliably documented on this
+  // endpoint, so this deliberately isn't invented — order correlation here
+  // relies entirely on external_reference, which is a real, typed,
+  // documented field.
+  async getPayment(paymentId: string): Promise<PaymentDetails | null> {
+    const accessToken = process.env.INSUMOS_MP_ACCESS_TOKEN;
+    if (!accessToken) return null;
+
+    try {
+      const { MercadoPagoConfig, Payment } = await import('mercadopago');
+      const client = new MercadoPagoConfig({ accessToken });
+      const payment = new Payment(client);
+      const result = await payment.get({ id: paymentId });
+      if (!result.id) return null;
+      return {
+        id: String(result.id),
+        status: result.status ?? 'unknown',
+        statusDetail: result.status_detail ?? null,
+        externalReference: result.external_reference ?? null,
+        transactionAmount: result.transaction_amount ?? null,
+        currencyId: result.currency_id ?? null,
+        dateApproved: result.date_approved ?? null,
+      };
+    } catch (error) {
+      console.error('[payments] getPayment (mercadopago) failed', error);
+      return null;
     }
   },
 };

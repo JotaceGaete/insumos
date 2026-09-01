@@ -30,6 +30,8 @@ const emailDeliveriesMigrationPath = new URL('supabase/migrations/20260901135015
 const paymentPreferenceMigrationPath = new URL('supabase/migrations/20260901150511_insumos_payment_preference_columns.sql', root);
 // Placeholder filename, not applied yet — same rename-after-apply pattern.
 const releasePaymentReservationMigrationPath = new URL('supabase/migrations/20260901154539_insumos_release_order_payment_reservation.sql', root);
+// Placeholder filename, not applied yet — same rename-after-apply pattern.
+const confirmOrderPaymentReferenceMigrationPath = new URL('supabase/migrations/20260901231742_insumos_confirm_order_payment_reference.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -1971,4 +1973,243 @@ test('release_order_payment_reservation: Case 2/3 (guarded scope) — the status
 test('release_order_payment_reservation: Case 5 (successful preference) — createPaymentPreference never calls it, so a created/reused preference leaves the order awaiting_payment with its reservation untouched', async () => {
   const createPreference = await readFile(new URL('src/features/payments/createPaymentPreference.ts', root), 'utf8');
   assert.doesNotMatch(createPreference, /releaseOrderPaymentReservation|release_order_payment_reservation|release_order_inventory/);
+});
+
+// ==========================================================================
+// Mercado Pago Etapa 2A: authoritative webhook — server-side payment
+// verification, atomic confirmation, no browser authority.
+// ==========================================================================
+
+test('verifyMercadoPagoWebhook implements the official manifest template exactly (id/request-id/ts, HMAC-SHA256, constant-time compare), and the mock-mode skip is gated by the same provider switch as everything else — never a bare "no secret -> allow"', async () => {
+  const source = await readFile(new URL('src/features/payments/verifyMercadoPagoWebhook.ts', root), 'utf8');
+  assert.match(source, /manifest \+= `id:\$\{parts\.id\}\;`/);
+  assert.match(source, /manifest \+= `request-id:\$\{parts\.requestId\}\;`/);
+  assert.match(source, /manifest \+= `ts:\$\{parts\.ts\}\;`/);
+  assert.match(source, /createHmac\('sha256', secret\)/);
+  assert.match(source, /timingSafeEqual\(expectedBuffer, providedBuffer\)/);
+  // Lowercasing is conditioned on the id being fully alphanumeric — matching
+  // the docs' literal "lowercased if alphanumeric" wording — not an
+  // unconditional .toLowerCase() call.
+  assert.match(source, /isAlphanumeric\(input\.dataIdFromQuery\)\s*\?\s*input\.dataIdFromQuery\.toLowerCase\(\)\s*:\s*input\.dataIdFromQuery/);
+
+  const noSecretBranch = source.slice(source.indexOf('if (!secret) {'), source.indexOf('if (!input.xSignature)'));
+  assert.match(noSecretBranch, /getConfiguredPaymentProviderName\(\) === 'mock'/);
+  assert.match(noSecretBranch, /console\.warn/);
+  assert.match(noSecretBranch, /status: 'invalid'/);
+});
+
+test('verifyMercadoPagoWebhook does not use the mercadopago SDK\'s webhook validator: mercadopago@2.10.0 does not export WebhookSignatureValidator or InvalidWebhookSignatureError (verified directly against the installed package), so the manual HMAC implementation is documented as the only option this pinned version supports', async () => {
+  const source = await readFile(new URL('src/features/payments/verifyMercadoPagoWebhook.ts', root), 'utf8');
+  const codeOnly = source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(codeOnly, /WebhookSignatureValidator|InvalidWebhookSignatureError/);
+  assert.match(source, /does not export any WebhookSignatureValidator/);
+});
+
+test('verifyMercadoPagoWebhook rejects a missing/malformed x-signature or missing ts/v1 before ever computing an HMAC', async () => {
+  const source = await readFile(new URL('src/features/payments/verifyMercadoPagoWebhook.ts', root), 'utf8');
+  const missingSigIndex = source.indexOf("if (!input.xSignature) return { status: 'invalid'");
+  const malformedIndex = source.indexOf("if (!ts || !v1) return { status: 'invalid'");
+  const hmacIndex = source.indexOf('createHmac(');
+  assert.ok(missingSigIndex >= 0 && malformedIndex > missingSigIndex && hmacIndex > malformedIndex, 'signature presence/shape must be validated before HMAC computation');
+});
+
+test('getMercadoPagoPayment delegates entirely to the configured provider — no concrete provider import, no business logic of its own', async () => {
+  const source = await readFile(new URL('src/features/payments/getMercadoPagoPayment.ts', root), 'utf8');
+  assert.match(source, /getPaymentProvider\(\)/);
+  assert.match(source, /provider\.getPayment\(paymentId\)/);
+  assert.doesNotMatch(source, /providers\/(mock|mercadoPago)PaymentProvider/);
+});
+
+test('mercadoPagoProvider.getPayment uses the real mercadopago SDK Payment resource (GET /v1/payments/{id} via payment.get), never logs the access token, and deliberately does not invent a preference_id field', async () => {
+  const source = await readFile(new URL('src/features/payments/providers/mercadoPagoProvider.ts', root), 'utf8');
+  assert.match(source, /const \{ MercadoPagoConfig, Payment \} = await import\('mercadopago'\);/);
+  assert.match(source, /new Payment\(client\)/);
+  assert.match(source, /payment\.get\(\{ id: paymentId \}\)/);
+  assert.doesNotMatch(source, /console\.(log|error)\([^)]*accessToken/);
+  const getPaymentFn = source.slice(source.indexOf('async getPayment('));
+  assert.doesNotMatch(getPaymentFn, /preferenceId|preference_id/);
+});
+
+test('mockPaymentFixtures: mock payment ids are fully self-describing (no shared mutable state, no database), round-trip encode/decode, and reject non-mock ids', async () => {
+  const { encodeMockPaymentId, decodeMockPaymentId } = await loadTypeScript('src/features/payments/providers/mockPaymentFixtures.ts');
+  const id = encodeMockPaymentId({ status: 'approved', externalReference: 'order-123', amount: 1500, currency: 'CLP' });
+  assert.match(id, /^mock_payment_/);
+  const decoded = decodeMockPaymentId(id);
+  // Compared via JSON rather than assert.deepEqual: `decoded` was created
+  // inside the test harness's vm sandbox, which has its own Object/JSON
+  // intrinsics — a distinct realm from this file's — so a structurally
+  // identical object still fails Node's strict, realm-aware deepEqual.
+  assert.equal(JSON.stringify(decoded), JSON.stringify({ status: 'approved', externalReference: 'order-123', amount: 1500, currency: 'CLP' }));
+  assert.equal(decodeMockPaymentId('real_1234567890'), null);
+  assert.equal(decodeMockPaymentId('mock_payment_not-valid-base64!!!'), null);
+});
+
+test('mockPaymentProvider.getPayment never performs network I/O and decodes every field from the fixture-encoded id', async () => {
+  const source = await readFile(new URL('src/features/payments/providers/mockPaymentProvider.ts', root), 'utf8');
+  const getPaymentFn = source.slice(source.indexOf('async getPayment('));
+  assert.doesNotMatch(getPaymentFn, /\bfetch\(|axios|XMLHttpRequest/);
+  assert.match(getPaymentFn, /decodeMockPaymentId\(paymentId\)/);
+  assert.match(getPaymentFn, /if \(!fixture\) return null;/);
+});
+
+test('processMercadoPagoPayment: only status="approved" proceeds past the status check — pending/in_process/rejected/cancelled/refunded/any other status is "ignored" before any database lookup', async () => {
+  const source = await readFile(new URL('src/features/payments/processMercadoPagoPayment.ts', root), 'utf8');
+  const statusCheckIndex = source.indexOf("if (payment.status !== 'approved')");
+  const dbLookupIndex = source.indexOf(".from('orders')");
+  assert.ok(statusCheckIndex >= 0 && dbLookupIndex > statusCheckIndex, 'the approved-status gate must run before any order lookup');
+  assert.match(source, /return \{ status: 'ignored', reason: `status "\$\{payment\.status\}" no requiere confirmación\.` \};/);
+});
+
+test('processMercadoPagoPayment: validates external_reference, provider match, currency, and amount — in that order — strictly before ever calling confirm_order_payment_reference, and never trusts the webhook body for any of these', async () => {
+  const source = await readFile(new URL('src/features/payments/processMercadoPagoPayment.ts', root), 'utf8');
+  const externalRefIndex = source.indexOf('if (!payment.externalReference)');
+  const orderLookupIndex = source.indexOf(".from('orders')");
+  const providerCheckIndex = source.indexOf('order.payment_provider !== configuredProvider');
+  const currencyIndex = source.indexOf("payment.currencyId !== 'CLP'");
+  const amountIndex = source.indexOf('payment.transactionAmount !== order.total');
+  const rpcIndex = source.indexOf("admin.rpc('confirm_order_payment_reference'");
+  assert.ok(
+    externalRefIndex >= 0 && orderLookupIndex > externalRefIndex && providerCheckIndex > orderLookupIndex
+      && currencyIndex > providerCheckIndex && amountIndex > currencyIndex && rpcIndex > amountIndex,
+    'validation must run in order: external_reference -> order lookup -> provider match -> currency -> amount -> confirm RPC'
+  );
+  assert.doesNotMatch(source, /request\.(body|json)|webhookBody|req\.body/);
+});
+
+test('processMercadoPagoPayment never checks preference_id correlation (documented as unreliable/undocumented on the real Payment API) and never throws — every path resolves to a result object', async () => {
+  const source = await readFile(new URL('src/features/payments/processMercadoPagoPayment.ts', root), 'utf8');
+  const withoutComments = source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(withoutComments, /orders\.payment_provider_preference_id|payment\.preferenceId/);
+  assert.match(source, /preference_id correlation[\s\S]*deliberately NOT checked/);
+  const fnBody = source.slice(source.indexOf('export async function processMercadoPagoPayment'));
+  assert.doesNotMatch(fnBody, /\n {2}throw /);
+});
+
+test('processMercadoPagoPayment calls confirm_order_payment_reference (never confirm_order_paid directly), passing String(payment.id) as payment_reference', async () => {
+  const source = await readFile(new URL('src/features/payments/processMercadoPagoPayment.ts', root), 'utf8');
+  assert.match(source, /admin\.rpc\('confirm_order_payment_reference', \{/);
+  assert.match(source, /p_payment_reference: String\(payment\.id\)/);
+  assert.doesNotMatch(source, /\.rpc\('confirm_order_paid'/);
+});
+
+test('webhook route is thin: parse -> verifyMercadoPagoWebhook -> extract payment id -> processMercadoPagoPayment -> map to HTTP, with no business logic (amount/currency/status checks) inlined', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/payments/mercadopago/webhook/route.ts', root), 'utf8');
+  assert.match(source, /verifyMercadoPagoWebhook\(\{ xSignature, xRequestId, dataIdFromQuery \}\)/);
+  assert.match(source, /processMercadoPagoPayment\(paymentId\)/);
+  const withoutComments = source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(withoutComments, /transaction_amount|currency_id|external_reference|createHmac/);
+});
+
+test('webhook route: invalid signature is rejected with 401 before the request body is ever parsed', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/payments/mercadopago/webhook/route.ts', root), 'utf8');
+  const verifyIndex = source.indexOf("if (verification.status === 'invalid')");
+  const status401Index = source.indexOf('status: 401 }');
+  const bodyParseIndex = source.indexOf('await request.json()');
+  assert.ok(verifyIndex >= 0 && status401Index > verifyIndex && bodyParseIndex > status401Index, 'signature must be verified, and 401 returned, before request.json() is ever called');
+});
+
+test('webhook route: confirmed/ignored/rejected all map to HTTP 200 (per Mercado Pago guidance, to avoid unnecessary retries), only a genuine internal error maps to 500', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/payments/mercadopago/webhook/route.ts', root), 'utf8');
+  assert.match(source, /if \(outcome\.status === 'error'\) \{\s*\n\s*return NextResponse\.json\(\{ status: outcome\.status, reason: outcome\.reason \}, \{ status: 500 \}\);/);
+  assert.match(source, /return NextResponse\.json\(\{ status: outcome\.status, reason: outcome\.reason \}, \{ status: 200 \}\);/);
+});
+
+test('webhook route stays isolated from legacy Artesellos: no import from src/app/api/checkout/mp, no legacy Supabase client, no hardcoded transport/payment endpoints', async () => {
+  const source = await readFile(new URL('src/app/api/insumos/payments/mercadopago/webhook/route.ts', root), 'utf8');
+  // "checkout/mp" legitimately appears in this file's own doc comment
+  // explaining that it does NOT touch that legacy path — only real imports
+  // matter here.
+  assert.doesNotMatch(source, /from ['"].*checkout\/mp/);
+  assert.doesNotMatch(source, /@\/lib\/supabase|NEXT_PUBLIC_SUPABASE\b|createSupabaseServer|createSupabaseAdmin/);
+});
+
+test('confirm_order_payment_reference migration: reuses confirm_order_paid entirely (no duplicated reservation/stock/movement logic), locks the order row first, sets payment_reference before confirming so the UNIQUE constraint is the cross-order backstop, and is service_role-only', async () => {
+  const sql = await readFile(confirmOrderPaymentReferenceMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.confirm_order_payment_reference[\s\S]*?\n\$\$;/);
+  assert.ok(fnMatch, 'confirm_order_payment_reference not found');
+  const fn = fnMatch[0];
+
+  assert.match(fn, /select \* into v_order from public\.orders where id = p_order_id for update;/);
+  assert.match(fn, /update public\.orders set payment_reference = p_payment_reference where id = p_order_id;/);
+  assert.match(fn, /select \* into v_confirm from public\.confirm_order_paid\(p_order_id\);/);
+  assert.doesNotMatch(fn, /update public\.inventory_reservations|update public\.product_variants|insert into public\.inventory_movements/);
+
+  const updateIndex = fn.indexOf('update public.orders set payment_reference');
+  const confirmCallIndex = fn.indexOf('public.confirm_order_paid(p_order_id)');
+  assert.ok(updateIndex >= 0 && confirmCallIndex > updateIndex, 'payment_reference must be set before confirm_order_paid runs, in the same transaction');
+
+  assert.match(sql, /revoke all on function public\.confirm_order_payment_reference\(uuid, text\) from public;/);
+  assert.match(sql, /revoke all on function public\.confirm_order_payment_reference\(uuid, text\) from anon;/);
+  assert.match(sql, /revoke all on function public\.confirm_order_payment_reference\(uuid, text\) from authenticated;/);
+  assert.match(sql, /grant execute on function public\.confirm_order_payment_reference\(uuid, text\) to service_role;/);
+});
+
+test('confirm_order_payment_reference migration: idempotent re-call with the SAME payment_reference on an already-paid order returns already_confirmed without writing anything; a DIFFERENT payment_reference on an already-paid order is rejected explicitly, not silently overwritten', async () => {
+  const sql = await readFile(confirmOrderPaymentReferenceMigrationPath, 'utf8');
+  const fnMatch = sql.match(/create or replace function public\.confirm_order_payment_reference[\s\S]*?\n\$\$;/);
+  const fn = fnMatch[0];
+  assert.match(fn, /if v_order\.status = 'paid' then/);
+  assert.match(fn, /if v_order\.payment_reference = p_payment_reference then/);
+  assert.match(fn, /return query select v_order\.id, v_order\.status, v_order\.payment_status, v_order\.payment_reference, true;/);
+  assert.match(fn, /raise exception 'Este pedido ya fue confirmado con un payment_reference distinto\.';/);
+});
+
+test('confirm_order_payment_reference migration does not modify confirm_order_paid, release_order_payment_reservation, or any historical migration', async () => {
+  const sql = await readFile(confirmOrderPaymentReferenceMigrationPath, 'utf8');
+  assert.doesNotMatch(sql, /create or replace function public\.confirm_order_paid\(/);
+  assert.doesNotMatch(sql, /create or replace function public\.release_order_inventory\(/);
+  assert.doesNotMatch(sql, /create or replace function public\.release_order_payment_reservation\(/);
+  assert.doesNotMatch(sql, /create or replace function public\.reserve_order_inventory\(/);
+  assert.doesNotMatch(sql, /alter table public\.orders\s+add column/);
+});
+
+test('/pago/retorno page and finalizar-compra page never reference the webhook route, confirm_order_payment_reference, or INSUMOS_MP_WEBHOOK_SECRET — payment confirmation stays entirely server-to-server', async () => {
+  const [retorno, checkoutPage] = await Promise.all([
+    readFile(new URL('src/app/pago/retorno/page.tsx', root), 'utf8'),
+    readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8'),
+  ]);
+  const stripComments = (source) => source.replace(/\/\/[^\n]*/g, '');
+  const forbidden = /confirm_order_payment_reference|confirm_order_paid|payments\/mercadopago\/webhook|INSUMOS_MP_WEBHOOK_SECRET/;
+  assert.doesNotMatch(stripComments(retorno), forbidden);
+  assert.doesNotMatch(stripComments(checkoutPage), forbidden);
+});
+
+test('secrets: INSUMOS_MP_WEBHOOK_SECRET is read only by verifyMercadoPagoWebhook.ts, and never appears in any client-facing page/component; INSUMOS_MP_ACCESS_TOKEN stays confined to mercadoPagoProvider.ts even with the new getPayment method', async () => {
+  const [verify, accessTokenFile, retorno, checkoutPage, cartDrawer, cartProvider] = await Promise.all([
+    readFile(new URL('src/features/payments/verifyMercadoPagoWebhook.ts', root), 'utf8'),
+    readFile(new URL('src/features/payments/providers/mercadoPagoProvider.ts', root), 'utf8'),
+    readFile(new URL('src/app/pago/retorno/page.tsx', root), 'utf8'),
+    readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8'),
+    readFile(new URL('src/features/cart/CartDrawer.tsx', root), 'utf8'),
+    readFile(new URL('src/features/cart/CartProvider.tsx', root), 'utf8'),
+  ]);
+  assert.match(verify, /INSUMOS_MP_WEBHOOK_SECRET/);
+  assert.match(accessTokenFile, /INSUMOS_MP_ACCESS_TOKEN/);
+  for (const source of [retorno, checkoutPage, cartDrawer, cartProvider]) {
+    assert.doesNotMatch(source, /INSUMOS_MP_WEBHOOK_SECRET|INSUMOS_MP_ACCESS_TOKEN|INSUMOS_MP_PUBLIC_KEY/);
+  }
+});
+
+test('no code path lets the browser reach confirm_order_paid or confirm_order_payment_reference: neither RPC name appears in any src/app page component (outside of doc comments explaining that guarantee), only in server-only payment/checkout modules', async () => {
+  const pageFiles = await Promise.all([
+    'src/app/pago/retorno/page.tsx',
+    'src/app/finalizar-compra/page.tsx',
+    'src/app/pedido/[id]/confirmacion/page.tsx',
+  ].map((p) => readFile(new URL(p, root), 'utf8')));
+  for (const source of pageFiles) {
+    assert.doesNotMatch(source.replace(/\/\/[^\n]*/g, ''), /confirm_order_paid|confirm_order_payment_reference/);
+  }
+});
+
+test('payments Etapa 2A module (webhook verification, payment lookup, processing) stays isolated from legacy Artesellos', async () => {
+  const files = await Promise.all([
+    'src/features/payments/verifyMercadoPagoWebhook.ts',
+    'src/features/payments/getMercadoPagoPayment.ts',
+    'src/features/payments/processMercadoPagoPayment.ts',
+    'src/features/payments/providers/mockPaymentFixtures.ts',
+  ].map((path) => readFile(new URL(path, root), 'utf8')));
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|@\/app\/checkout|checkout\/mp|create-payment-link|NEXT_PUBLIC_SUPABASE\b|(?<!INSUMOS_)MP_ACCESS_TOKEN\b|starken\.cl|chilexpress\.cl|blueexpress/i;
+  for (const source of files) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
 });
