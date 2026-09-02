@@ -33,6 +33,7 @@ const releasePaymentReservationMigrationPath = new URL('supabase/migrations/2026
 // Placeholder filename, not applied yet — same rename-after-apply pattern.
 const confirmOrderPaymentReferenceMigrationPath = new URL('supabase/migrations/20260901231742_insumos_confirm_order_payment_reference.sql', root);
 const customersMigrationPath = new URL('supabase/migrations/20260902170527_insumos_customers.sql', root);
+const checkoutCustomerIdentityMigrationPath = new URL('supabase/migrations/20260902174015_insumos_checkout_customer_identity.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -2521,4 +2522,237 @@ test('customers/types.ts: reuses DeliveryMethod/PreferredCarrier/BillingDocument
   assert.match(source, /import type \{ BillingDocumentType, DeliveryMethod, PreferredCarrier \} from '@\/features\/checkout\/shipping';/);
   assert.match(source, /import type \{ CheckoutShippingAddress \} from '@\/features\/checkout\/types';/);
   assert.doesNotMatch(source, /export type DeliveryMethod|export type PreferredCarrier|export type BillingDocumentType/);
+});
+
+// ==========================================================================
+// Customer profile Etapa 4: read-only admin UI — /admin/clientes and
+// /admin/clientes/[id]. No mutations, no new auth mechanism, no migrations.
+// ==========================================================================
+
+test('/admin/clientes and /admin/clientes/[id] are protected by the same requireCatalogManager() gate every other /admin route already uses — no parallel auth mechanism was introduced', async () => {
+  const adminLayout = await readFile(new URL('src/app/admin/layout.tsx', root), 'utf8');
+  assert.match(adminLayout, /requireCatalogManager/);
+  // Confirm the new pages are plain page.tsx files under src/app/admin — the
+  // existing layout.tsx wraps every route in this tree automatically, so
+  // there is nothing for the new pages themselves to do for page-level auth.
+  const [listPage, detailPage] = await Promise.all([
+    readFile(new URL('src/app/admin/clientes/page.tsx', root), 'utf8'),
+    readFile(new URL('src/app/admin/clientes/[id]/page.tsx', root), 'utf8'),
+  ]);
+  assert.doesNotMatch(listPage, /requireInsumosRole|requireCatalogManager|requireCustomerManager/);
+  assert.doesNotMatch(detailPage, /requireInsumosRole|requireCatalogManager|requireCustomerManager/);
+});
+
+test('the customers admin API routes are GET-only (read-only Etapa 4: no POST/PATCH/PUT/DELETE) and rely entirely on listCustomers/getCustomerById/listCustomerOrders for both data and auth — no direct Supabase admin client bypassing those guarded functions', async () => {
+  const [listRoute, detailRoute] = await Promise.all([
+    readFile(new URL('src/app/api/insumos/admin/customers/route.ts', root), 'utf8'),
+    readFile(new URL('src/app/api/insumos/admin/customers/[id]/route.ts', root), 'utf8'),
+  ]);
+  for (const source of [listRoute, detailRoute]) {
+    assert.doesNotMatch(source, /export async function (POST|PATCH|PUT|DELETE)/);
+    assert.doesNotMatch(source, /createInsumosSupabaseAdmin|createInsumosSupabaseServer/);
+  }
+  assert.match(listRoute, /import \{ listCustomers \} from '@\/features\/customers\/server\/queries';/);
+  assert.match(detailRoute, /import \{ getCustomerById, listCustomerOrders \} from '@\/features\/customers\/server\/queries';/);
+});
+
+test('GET /api/insumos/admin/customers calls listCustomers with search/page/pageSize taken from the request query string — the list UI never re-implements search or pagination filtering itself', async () => {
+  const routeSource = await readFile(new URL('src/app/api/insumos/admin/customers/route.ts', root), 'utf8');
+  assert.match(routeSource, /const search = searchParams\.get\('search'\) \?\? undefined;/);
+  assert.match(routeSource, /await listCustomers\(\{\s*\n\s*search,\s*\n\s*page: pageParam \? Number\(pageParam\) : undefined,\s*\n\s*pageSize: pageSizeParam \? Number\(pageSizeParam\) : undefined,\s*\n\s*\}\);/);
+
+  const listUiSource = await readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8');
+  // The search box sends its term to the API as a query param and lets the
+  // backend filter — it must never itself call .filter()/.includes() on the
+  // customers it already has in memory (that would be re-implementing the
+  // commercial search client-side, which is explicitly forbidden).
+  assert.match(listUiSource, /if \(search\) params\.set\('search', search\);/);
+  assert.doesNotMatch(listUiSource, /\.filter\(|\.includes\(/);
+});
+
+test('CustomerList paginates via page state sent to the API (prev/next, page indicator) rather than slicing an already-fetched full list client-side', async () => {
+  const source = await readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8');
+  assert.match(source, /const params = new URLSearchParams\(\{ page: String\(page\), pageSize: String\(PAGE_SIZE\) \}\);/);
+  assert.match(source, /setPage\(\(current\) => Math\.max\(1, current - 1\)\)/);
+  assert.match(source, /setPage\(\(current\) => Math\.min\(totalPages, current \+ 1\)\)/);
+  assert.doesNotMatch(source, /\.slice\(/);
+});
+
+test('a customer with no commercial orders renders exactly the spec\'s empty-state numbers: Compras 0, Total gastado $0 (not "—"), Ticket promedio/Primera/Última compra "—"', async () => {
+  const listSource = await readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8');
+  const profileSource = await readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8');
+  // totalOrders/totalSpent are rendered unconditionally (0 and $0 are real,
+  // meaningful values — never coerced to "—" the way the nullable derived
+  // dates/averages are).
+  assert.match(listSource, /\{customer\.totalOrders\}/);
+  assert.match(listSource, /\{formatPrice\(customer\.totalSpent\)\}/);
+  assert.doesNotMatch(listSource, /customer\.totalOrders \|\||customer\.totalSpent \|\|/);
+  assert.match(profileSource, /\{customer\.totalOrders\}/);
+  assert.match(profileSource, /\{formatPrice\(customer\.totalSpent\)\}/);
+  // averageOrderValue/first/lastOrderAt are the ones allowed to show "—".
+  assert.match(profileSource, /customer\.averageOrderValue === null \? '—' : formatPrice\(customer\.averageOrderValue\)/);
+  assert.match(profileSource, /formatDate\(customer\.firstOrderAt\)/);
+  assert.match(profileSource, /formatDate\(customer\.lastOrderAt\)/);
+});
+
+test('/admin/clientes/[id] fetches the profile from getCustomerById (via the combined API route) — not re-derived from raw order rows in the component', async () => {
+  const source = await readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8');
+  assert.match(source, /fetch\(`\/api\/insumos\/admin\/customers\/\$\{customerId\}`\)/);
+  assert.match(source, /const \{ customer, orders \} = data;/);
+});
+
+test('order history uses listCustomerOrders data as-is (full history, every status) and never recalculates totalOrders/totalSpent/averageOrderValue from it — those numbers only ever come from the customer object returned by getCustomerById', async () => {
+  const source = await readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8');
+  // The only uses of the `orders` array are the empty-state check and the
+  // two render lists (desktop table + mobile cards) — never a sum/reduce/
+  // count feeding into the KPI cards.
+  assert.doesNotMatch(source, /orders\.reduce|orders\.filter\(.*status.*paid|orders\.length ===? \w+\.totalOrders/);
+  assert.match(source, /orders\.length === 0/);
+  assert.match(source, /orders\.map\(\(order\)/);
+});
+
+test('cancelled orders appear in the history table with their own visual status (not hidden, not merged with any other status) but never influence the KPI cards, which come entirely from getCustomerById\'s already-filtered commercial summary', async () => {
+  const source = await readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8');
+  assert.match(source, /cancelled: 'bg-red-50 text-red-700',/);
+  assert.match(source, /cancelled: 'Cancelado',/);
+  // All five real order.status values get their own distinct style — none
+  // fall through to the generic unstyled default for a status this common.
+  for (const status of ['paid', 'fulfilled', 'pending', 'awaiting_payment', 'cancelled']) {
+    assert.match(source, new RegExp(`${status}: '[^']+',`));
+  }
+});
+
+test('null master-data and derived fields render "—" — full name, phone, RUT, and the three most-recent-order preferences never fabricate a value', async () => {
+  const source = await readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8');
+  assert.match(source, /\{customer\.fullName \|\| '—'\}/);
+  assert.match(source, /\{customer\.phoneNormalized \|\| '—'\}/);
+  assert.match(source, /\{customer\.rutNormalized \|\| '—'\}/);
+  assert.match(source, /customer\.lastDeliveryMethod \? DELIVERY_METHOD_LABELS\[customer\.lastDeliveryMethod\] : '—'/);
+  assert.match(source, /customer\.lastPreferredCarrier \? CARRIER_LABELS\[customer\.lastPreferredCarrier\] : '—'/);
+  assert.match(source, /customer\.lastBillingDocumentType \? BILLING_DOCUMENT_LABELS\[customer\.lastBillingDocumentType\] : '—'/);
+
+  const listSource = await readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8');
+  assert.match(listSource, /\{customer\.fullName \|\| '—'\}/);
+  assert.match(listSource, /\{customer\.phoneNormalized \|\| '—'\}/);
+});
+
+test('customers admin components never send a mutating request and never import a mutation function for customers or orders — Etapa 4 is strictly read-only', async () => {
+  const [listSource, profileSource] = await Promise.all([
+    readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8'),
+    readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8'),
+  ]);
+  const mutationPattern = /method:\s*['"](POST|PATCH|PUT|DELETE)['"]|createCustomer|updateCustomer|deleteCustomer|createOrder|updateOrder|deleteOrder/;
+  assert.doesNotMatch(listSource, mutationPattern);
+  assert.doesNotMatch(profileSource, mutationPattern);
+});
+
+test('customers admin UI stays isolated from legacy Artesellos: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no legacy ProductList/AdminShell chrome imports', async () => {
+  const [listSource, profileSource, listRoute, detailRoute] = await Promise.all([
+    readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8'),
+    readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8'),
+    readFile(new URL('src/app/api/insumos/admin/customers/route.ts', root), 'utf8'),
+    readFile(new URL('src/app/api/insumos/admin/customers/[id]/route.ts', root), 'utf8'),
+  ]);
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|NEXT_PUBLIC_SUPABASE\b/;
+  for (const source of [listSource, profileSource, listRoute, detailRoute]) {
+    assert.doesNotMatch(source, legacyPattern);
+  }
+});
+
+test('"Clientes" was added to the existing admin navigation without touching the public site nav', async () => {
+  const adminShell = await readFile(new URL('src/features/admin/components/AdminShell.tsx', root), 'utf8');
+  assert.match(adminShell, /\{ href: '\/admin\/clientes', label: 'Clientes' \}/);
+  const header = await readFile(new URL('src/components/insumos/Header.tsx', root), 'utf8');
+  assert.doesNotMatch(header, /\/admin\/clientes/);
+});
+
+test('order history translates payment_status to Spanish for display only (pending/approved/rejected/cancelled/refunded), falls back to the raw value for anything unrecognized, and never mutates order.paymentStatus itself', async () => {
+  const source = await readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8');
+  assert.match(source, /const PAYMENT_STATUS_LABELS: Record<string, string> = \{\s*\n\s*pending: 'Pendiente',\s*\n\s*approved: 'Aprobado',\s*\n\s*rejected: 'Rechazado',\s*\n\s*cancelled: 'Cancelado',\s*\n\s*refunded: 'Reembolsado',/);
+  assert.match(source, /function formatPaymentStatus\(paymentStatus: string\): string \{\s*\n\s*return PAYMENT_STATUS_LABELS\[paymentStatus\] \|\| paymentStatus;/);
+  // Both render sites (desktop table + mobile card) go through the
+  // formatter — neither prints the raw order.paymentStatus directly.
+  const renderSites = (source.match(/formatPaymentStatus\(order\.paymentStatus\)/g) || []).length;
+  assert.strictEqual(renderSites, 2);
+  assert.doesNotMatch(source, /\{order\.paymentStatus\}/);
+});
+
+test('the "most recent order" section is titled "Datos del último pedido" (not "Preferencias recientes") to avoid implying a consolidated commercial preference when it may reflect a single cancelled order', async () => {
+  const source = await readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8');
+  assert.match(source, /Datos del último pedido/);
+  assert.match(source, /Información registrada en el pedido más reciente del cliente\./);
+  assert.doesNotMatch(source, /Preferencias recientes/);
+});
+
+// ==========================================================================
+// Customer profile Etapa 5: integración customers <-> checkout. Resolves or
+// creates the customers row atomically inside create_pending_order and
+// writes orders.buyer_id — same RPC signature as before, no TS changes
+// anywhere. Mercado Pago stays untouched/on stand-by.
+// ==========================================================================
+
+test('checkout customer identity migration: create_pending_order keeps the exact same signature (10 params, same names/types/defaults, same return table) — no client-side call site needs to change', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  assert.match(sql, /create or replace function public\.create_pending_order\(\s*\n\s*p_items jsonb,\s*\n\s*p_customer_email text,\s*\n\s*p_customer_name text,\s*\n\s*p_customer_phone text,\s*\n\s*p_shipping_address jsonb,\s*\n\s*p_notes text,\s*\n\s*p_preferred_carrier text,\s*\n\s*p_billing_document_type text default 'boleta',\s*\n\s*p_billing_data jsonb default null,\s*\n\s*p_delivery_method text default 'shipping'\s*\n\)/);
+  assert.match(sql, /returns table \(order_id uuid, confirmation_token text, subtotal integer, total integer, shipping_policy text\)/);
+});
+
+test('checkout customer identity migration: normalizes email as lower(trim(...)) — the same identity rule normalizeEmail() already uses elsewhere — and never derives identity from name/phone/rut', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  assert.match(sql, /v_email_normalized := lower\(trim\(p_customer_email\)\);/);
+  assert.match(sql, /v_phone_normalized := nullif\(trim\(coalesce\(p_customer_phone, ''\)\), ''\);/);
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /on conflict \(phone_normalized\)|on conflict \(rut_normalized\)|on conflict \(full_name\)/);
+});
+
+test('checkout customer identity migration: resolves the customer via INSERT ... ON CONFLICT (email_normalized) DO UPDATE ... RETURNING id — not a SELECT-then-INSERT, which is what makes two concurrent checkouts for the same new email race-safe', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  assert.match(sql, /insert into public\.customers \(email_normalized, full_name, phone_normalized\)\s*\n\s*values \(v_email_normalized, trim\(p_customer_name\), v_phone_normalized\)\s*\n\s*on conflict \(email_normalized\) do update set/);
+  assert.match(sql, /returning id into v_customer_id;/);
+  // No prior SELECT into v_customer_id anywhere before the upsert — the
+  // resolution mechanism is the upsert itself, not a lookup-then-branch.
+  const upsertIndex = sql.indexOf('insert into public.customers');
+  const beforeUpsert = sql.slice(0, upsertIndex);
+  assert.doesNotMatch(beforeUpsert, /select .*into v_customer_id/i);
+});
+
+test('checkout customer identity migration: the UPDATE branch never blanks a valid master value — full_name/phone_normalized fall back to the existing row via coalesce/nullif when the new value is null or empty, and email_normalized itself is never rewritten', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  assert.match(sql, /full_name = coalesce\(nullif\(trim\(excluded\.full_name\), ''\), public\.customers\.full_name\),/);
+  assert.match(sql, /phone_normalized = coalesce\(excluded\.phone_normalized, public\.customers\.phone_normalized\),/);
+  assert.match(sql, /updated_at = now\(\)\s*\n\s*returning id into v_customer_id;/);
+  const setClauseStart = sql.indexOf('on conflict (email_normalized) do update set');
+  const setClauseEnd = sql.indexOf('returning id into v_customer_id', setClauseStart);
+  const setClause = sql.slice(setClauseStart, setClauseEnd);
+  assert.doesNotMatch(setClause, /email_normalized\s*=/);
+});
+
+test('checkout customer identity migration: rut_normalized is never referenced in actual SQL code — only in doc comments explaining it is explicitly out of scope for this stage', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /rut_normalized/);
+});
+
+test('checkout customer identity migration: the customer upsert runs after all input validation but before the stock-locking loop — so it participates in the same implicit transaction as stock validation and rolls back with it on any later failure, and never touches inventory/reservations', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  const validationEnd = sql.indexOf("raise exception 'Los datos de facturación son incompletos o inválidos.';");
+  const upsertIndex = sql.indexOf('insert into public.customers');
+  const stockLoopIndex = sql.indexOf('for rec in');
+  assert.ok(validationEnd < upsertIndex, 'customer upsert must come after input validation');
+  assert.ok(upsertIndex < stockLoopIndex, 'customer upsert must come before the stock-locking loop');
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /inventory_movements|inventory_reservations\s+set|record_inventory_movement|reserve_order_inventory|release_order_inventory/);
+});
+
+test('checkout customer identity migration: orders.buyer_id is added to both the INSERT column list and VALUES (v_customer_id, right after auth.uid()) — orders.customer_id (legacy, still auth.uid()) is otherwise untouched', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  assert.match(sql, /insert into public\.orders \(\s*\n\s*customer_id, buyer_id, customer_email, customer_name, customer_phone,/);
+  assert.match(sql, /\) values \(\s*\n\s*auth\.uid\(\), v_customer_id, trim\(p_customer_email\), trim\(p_customer_name\)/);
+});
+
+test('checkout customer identity migration stays out of scope: no confirm_order_paid/confirm_order_payment_reference, no Mercado Pago, no reservation/inventory RPCs, no new grants or RLS policies', async () => {
+  const sql = await readFile(checkoutCustomerIdentityMigrationPath, 'utf8');
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /confirm_order_paid|confirm_order_payment_reference|reserve_order_inventory|release_order_inventory|release_order_payment_reservation|mercadopago|payment_reference/i);
+  assert.doesNotMatch(sql, /create policy|grant |alter table public\.customers enable row level security/);
 });
