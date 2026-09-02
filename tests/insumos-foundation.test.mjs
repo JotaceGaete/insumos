@@ -35,6 +35,7 @@ const confirmOrderPaymentReferenceMigrationPath = new URL('supabase/migrations/2
 const customersMigrationPath = new URL('supabase/migrations/20260902170527_insumos_customers.sql', root);
 const checkoutCustomerIdentityMigrationPath = new URL('supabase/migrations/20260902174015_insumos_checkout_customer_identity.sql', root);
 const customerAuthClaimMigrationPath = new URL('supabase/migrations/20260902181251_insumos_customer_auth_claim.sql', root);
+const buyerRlsMigrationPath = new URL('supabase/migrations/20260902183705_insumos_buyer_rls.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -2843,4 +2844,61 @@ test('customer auth claim migration stays out of scope: no RLS policy changes on
   const codeOnly = sql.replace(/--[^\n]*/g, '');
   assert.doesNotMatch(codeOnly, /create policy|alter table public\.(customers|orders|order_items) enable row level security/);
   assert.doesNotMatch(codeOnly, /create or replace function public\.create_pending_order|confirm_order_paid|confirm_order_payment_reference|reserve_order_inventory|release_order_inventory|release_order_payment_reservation|mercadopago/i);
+});
+
+// ==========================================================================
+// Customer profile Etapa 6C: RLS de comprador. Políticas SELECT aditivas
+// que autorizan exclusivamente vía auth.uid() -> customers.user_id ->
+// customers.id -> orders.buyer_id -> order_items.order_id. Sin trigger,
+// sin INSERT/UPDATE/DELETE de comprador, sin tocar checkout ni Etapa 5/6B.
+// ==========================================================================
+
+test('buyer RLS migration: customers SELECT policy authorizes via user_id = auth.uid() — never by email or any other column', async () => {
+  const sql = await readFile(buyerRlsMigrationPath, 'utf8');
+  assert.match(sql, /create policy "buyers read own customer row" on public\.customers\s*\n\s*for select using \(user_id = auth\.uid\(\)\);/);
+});
+
+test('buyer RLS migration: orders SELECT policy chains through customers.id = orders.buyer_id AND customers.user_id = auth.uid() — never through orders.customer_email or orders.customer_id', async () => {
+  const sql = await readFile(buyerRlsMigrationPath, 'utf8');
+  assert.match(sql, /create policy "buyers read own orders" on public\.orders\s*\n\s*for select using \(\s*\n\s*exists \(\s*\n\s*select 1 from public\.customers c\s*\n\s*where c\.id = orders\.buyer_id and c\.user_id = auth\.uid\(\)\s*\n\s*\)\s*\n\s*\);/);
+  const policyBlock = sql.slice(sql.indexOf('"buyers read own orders"'), sql.indexOf('"buyers read own order items"'));
+  assert.doesNotMatch(policyBlock, /customer_email|customer_id/);
+});
+
+test('buyer RLS migration: order_items SELECT policy chains order_items.order_id -> orders.buyer_id -> customers.user_id = auth.uid() — knowing an order_id alone is not enough', async () => {
+  const sql = await readFile(buyerRlsMigrationPath, 'utf8');
+  assert.match(sql, /create policy "buyers read own order items" on public\.order_items\s*\n\s*for select using \(\s*\n\s*exists \(\s*\n\s*select 1 from public\.orders o\s*\n\s*join public\.customers c on c\.id = o\.buyer_id\s*\n\s*where o\.id = order_items\.order_id and c\.user_id = auth\.uid\(\)\s*\n\s*\)\s*\n\s*\);/);
+});
+
+test('buyer RLS migration: adds exactly 3 new policies, all SELECT-only — no INSERT/UPDATE/DELETE/ALL policy is introduced for the buyer', async () => {
+  const sql = await readFile(buyerRlsMigrationPath, 'utf8');
+  const policyMatches = sql.match(/create policy "buyers[^"]*"/g) || [];
+  assert.strictEqual(policyMatches.length, 3, 'exactly customers + orders + order_items buyer policies');
+  for (const match of policyMatches) {
+    const start = sql.indexOf(match);
+    const statementEnd = sql.indexOf(';', start);
+    const statement = sql.slice(start, statementEnd);
+    assert.match(statement, /for select/, `${match} must be a SELECT-only policy`);
+  }
+  assert.doesNotMatch(sql, /for insert|for update|for delete|for all/i);
+});
+
+test('buyer RLS migration is purely additive: the legacy customer_id-based policies and the admin/staff ALL policies are never referenced/altered/dropped — no DROP POLICY, no ALTER POLICY anywhere', async () => {
+  const sql = await readFile(buyerRlsMigrationPath, 'utf8');
+  assert.doesNotMatch(sql, /drop policy|alter policy/i);
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /"customers read own orders"|"customers read own order items"|"catalog managers manage/);
+});
+
+test('buyer RLS migration stays out of scope: no trigger, no grant/revoke statements (authenticated already has table-level SELECT by default), no changes to create_pending_order or claim_customer_for_current_user', async () => {
+  const sql = await readFile(buyerRlsMigrationPath, 'utf8');
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /create trigger|grant |revoke /i);
+  assert.doesNotMatch(codeOnly, /create or replace function/i);
+});
+
+test('regression guard: the original legacy orders/order_items policies (orders.customer_id = auth.uid()) still live untouched in the foundation migration — Etapa 6C never edited that file', async () => {
+  const sql = await readFile(migrationPath, 'utf8');
+  assert.match(sql, /create policy "customers read own orders" on public\.orders for select using \(customer_id = auth\.uid\(\) or public\.has_role\('admin'\) or public\.has_role\('staff'\)\);/);
+  assert.match(sql, /create policy "customers read own order items" on public\.order_items for select using \(exists \(select 1 from public\.orders where orders\.id = order_items\.order_id and orders\.customer_id = auth\.uid\(\)\) or public\.has_role\('admin'\) or public\.has_role\('staff'\)\);/);
 });
