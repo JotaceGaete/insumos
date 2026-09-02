@@ -52,7 +52,7 @@ Opciones:
 
 📍 Tienda: Centro de Santiago, Providencia
 📞 WhatsApp: Disponible para consultas
-📧 Email: contacto@artesellos.cl
+📧 Email: contacto@artema.cl
 ```
 
 ### 3. **Stock Suficiente**
@@ -90,7 +90,7 @@ Nuestra tienda física cuenta con mayor stock.
 
 📍 Centro de Santiago, Providencia
 📞 WhatsApp disponible
-📧 contacto@artesellos.cl
+📧 contacto@artema.cl
 ```
 
 ---
@@ -128,7 +128,7 @@ Bot: "Para compra online tenemos 8 unidades disponibles del Trodat 4912.
      
      📍 Tienda: Centro de Santiago, Providencia
      📞 WhatsApp: Disponible para consultas
-     📧 Email: contacto@artesellos.cl"
+     📧 Email: contacto@artema.cl"
 ```
 
 ### Ejemplo 3: Pedido Pequeño (Stock Suficiente)

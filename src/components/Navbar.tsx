@@ -48,7 +48,7 @@ export default function Navbar() {
                 <div className="relative w-11 h-11 flex-shrink-0 rounded-xl bg-indigo-50 ring-1 ring-indigo-100 shadow-sm grid place-items-center transition-transform duration-200 group-hover:scale-[1.05]">
                   <Image
                     src="/logo.svg"
-                    alt="Artesellos Logo"
+                    alt="ARTEMA Logo"
                     width={28}
                     height={28}
                     className="object-contain drop-shadow-sm"
@@ -59,7 +59,7 @@ export default function Navbar() {
                 {/* Texto marca */}
                 <div className="hidden sm:flex flex-col">
                   <span className="text-[18px] font-extrabold text-gray-900 tracking-[-0.02em] leading-none">
-                    Artesellos
+                    ARTEMA
                   </span>
                   <span className="mt-1 text-[11px] text-gray-500 tracking-wide leading-none">
                     Timbres personalizados

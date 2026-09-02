@@ -260,7 +260,7 @@ Resultado: ✅ Correcto
 🛒 Compra más, paga menos en envío.
 🚚 Todos los transportistas disponibles.
 
-#Artesellos #EnvíoEconómico #TimbresPersonalizados
+#ARTEMA #EnvíoEconómico #TimbresPersonalizados
 ```
 
 ### Para el Sitio Web:

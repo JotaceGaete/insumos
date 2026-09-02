@@ -27,7 +27,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
     }
 
     try {
-      const base = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || 'https://artesellos.cl').replace(/\/+$/, '');
+      const base = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || 'https://artema.cl').replace(/\/+$/, '');
       let key = trimmed.replace(/^\/+/, '');
       key = key.replace(/^(timbres\/)/i, '');
       const encoded = key.split('/')
@@ -54,7 +54,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
   };
 
   // Obtener marca o categoría principal
-  const brand = product.categories?.[0]?.name || 'Artesellos';
+  const brand = product.categories?.[0]?.name || 'ARTEMA';
 
   return (
     <Link

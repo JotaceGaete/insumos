@@ -65,11 +65,11 @@ export default function TimbresEmpresaPage() {
       <p>
         Para negocios con varias líneas de producto, a veces conviene más de un sello: uno mínimo
         para facturas y otro para logística. Esta separación evita saturar un único diseño y permite
-        cambiar tintas o formatos sin detener la operación. En Artesellos te ayudamos a dimensionar
+        cambiar tintas o formatos sin detener la operación. En ARTEMA te ayudamos a dimensionar
         cada bloque según uso real y frecuencia de estampado.
       </p>
 
-      <h2>Proceso con Artesellos y canales de cotización</h2>
+      <h2>Proceso con ARTEMA y canales de cotización</h2>
       <p>
         Cotizar es simple: comparte el contenido, el tamaño aproximado y si requieres montaje
         manual o automático. Si buscas inspiración, visita{" "}

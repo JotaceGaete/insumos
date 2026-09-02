@@ -1,4 +1,4 @@
--- Native ArteInsumos checkout: atomic pending-order creation + a non-guessable
+-- Native ARTEMA checkout: atomic pending-order creation + a non-guessable
 -- confirmation token so /pedido/[id]/confirmacion cannot be scraped by UUID alone.
 --
 -- This is the migration as it was actually first applied to the INSUMOS

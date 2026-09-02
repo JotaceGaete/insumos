@@ -4,8 +4,8 @@ import { processMercadoPagoPayment } from '@/features/payments/processMercadoPag
 
 export const runtime = 'nodejs';
 
-// ArteInsumos-only. Deliberately does not touch, import from, or share any
-// code with the legacy Artesellos routes under src/app/api/checkout/mp/* —
+// ARTEMA-only. Deliberately does not touch, import from, or share any
+// code with the legacy ARTEMA routes under src/app/api/checkout/mp/* —
 // separate provider config, separate Supabase project, separate everything.
 
 function extractPaymentId(body: unknown, dataIdFromQuery: string | null): string | null {

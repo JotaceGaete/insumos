@@ -7,7 +7,7 @@ import WhatsAppButton from "@/components/seo/WhatsAppButton";
 export const metadata: Metadata = {
   title: "Timbre RUT y datos de empresa en Chile",
   description:
-    "Timbre RUT para documentos: qué datos incluir, usos en Chile y ventajas de fabricarlo con Artesellos. Calidad de grabado y despacho.",
+    "Timbre RUT para documentos: qué datos incluir, usos en Chile y ventajas de fabricarlo con ARTEMA. Calidad de grabado y despacho.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/timbre-rut" },
 };
@@ -72,7 +72,7 @@ export default function TimbreRutPage() {
         híbrida: identidad visual + datos legales en un solo estampado.
       </p>
 
-      <h2>Para qué sirve en la práctica y ventajas con Artesellos</h2>
+      <h2>Para qué sirve en la práctica y ventajas con ARTEMA</h2>
       <p>
         En la práctica, el timbre con RUT acelera validaciones internas, recepción de proveedores y
         firma de guías. También ayuda en ferias o puntos de venta donde se entrega documentación
@@ -81,7 +81,7 @@ export default function TimbreRutPage() {
         resuelto marca la diferencia entre un comprobante ordenado y uno difícil de auditar.
       </p>
       <p>
-        Al fabricar con Artesellos obtienes asesoría en tamaño, montaje y tipo de entintado según tu
+        Al fabricar con ARTEMA obtienes asesoría en tamaño, montaje y tipo de entintado según tu
         ritmo de uso. Trabajamos con estándares de grabado que buscan durabilidad y repetición
         uniforme, clave cuando el sello se usa decenas de veces al día. Si necesitas alternativas
         automáticas para alto volumen, revisa{" "}

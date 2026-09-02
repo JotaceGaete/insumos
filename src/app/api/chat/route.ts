@@ -92,10 +92,10 @@ export async function POST(req: Request) {
     }
     
     // System Prompt base - Solo se usa cuando NO hay contexto RAG
-    const baseSystemPrompt = `Eres un asistente de ventas de Artesellos, una tienda especializada en timbres personalizados profesionales.
+    const baseSystemPrompt = `Eres un asistente de ventas de ARTEMA, una tienda especializada en timbres personalizados profesionales.
 
 INFORMACIÓN GENERAL QUE CONOCES:
-- Artesellos vende timbres de diferentes marcas: Shiny, Trodat, Automatik
+- ARTEMA vende timbres de diferentes marcas: Shiny, Trodat, Automatik
 - Los timbres pueden ser automáticos o manuales
 - Ofrecen personalización de timbres con texto, logos y diseños
 - Tienen tienda física en Santiago, Chile
@@ -407,7 +407,7 @@ INSTRUCCIONES:
       const parts = searchTerm.split(/\s+/);
       // Cliente Supabase: construido aquí (no a nivel de módulo) para que la
       // ausencia de estas variables legacy en un ambiente distinto a
-      // Artesellos no rompa `next build` — solo falla si este endpoint se invoca.
+      // ARTEMA no rompa `next build` — solo falla si este endpoint se invoca.
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -453,12 +453,12 @@ INSTRUCCIONES:
               responseContent += `3️⃣ Ver modelos similares disponibles\n\n`;
               responseContent += `📍 **Tienda:** Centro de Santiago, Providencia\n`;
               responseContent += `📞 **WhatsApp:** Disponible para consultas\n`;
-              responseContent += `📧 **Email:** contacto@artesellos.cl`;
+              responseContent += `📧 **Email:** contacto@artema.cl`;
             } else {
               responseContent += `💡 **Consulta con nuestra tienda física** que puede tener stock disponible para tu pedido.\n\n`;
               responseContent += `📍 Centro de Santiago, Providencia\n`;
               responseContent += `📞 WhatsApp disponible\n`;
-              responseContent += `📧 contacto@artesellos.cl`;
+              responseContent += `📧 contacto@artema.cl`;
             }
           } else {
             // Stock suficiente, calcular total
@@ -470,7 +470,7 @@ INSTRUCCIONES:
             responseContent += `**Precio unitario:** $${product.precio?.toLocaleString('es-CL')}\n`;
             responseContent += `**Total:** $${total.toLocaleString('es-CL')}\n\n`;
             responseContent += `Para finalizar tu compra, ingresa aquí para ver los datos de transferencia o pagar con tarjeta:\n`;
-            responseContent += `👉 [Ir a Pagar](https://artesellos.cl/pagar?monto=${total}&detalle=${detalle})\n\n`;
+            responseContent += `👉 [Ir a Pagar](https://artema.cl/pagar?monto=${total}&detalle=${detalle})\n\n`;
             responseContent += `_💡 Para pedidos mayoristas o cantidades mayores, contáctanos directamente. Nuestra tienda física cuenta con mayor stock._`;
           }
         } else {
@@ -497,7 +497,7 @@ INSTRUCCIONES:
 ` : '';
           
           // System Prompt restrictivo usando SOLO contexto RAG
-          enhancedSystemPrompt = `Eres un asistente de ventas de Artesellos, experto en sus políticas de productos, envíos, y pagos. Tu única fuente de verdad es la sección de 'CONTEXTO PROPORCIONADO' que se encuentra a continuación.
+          enhancedSystemPrompt = `Eres un asistente de ventas de ARTEMA, experto en sus políticas de productos, envíos, y pagos. Tu única fuente de verdad es la sección de 'CONTEXTO PROPORCIONADO' que se encuentra a continuación.
 
 - **INSTRUCCIONES IMPORTANTES:**
   1. Responde la pregunta del usuario usando SOLO la información del 'CONTEXTO PROPORCIONADO'.
@@ -562,7 +562,7 @@ PREGUNTA DEL USUARIO: ${lastMessage}`;
 ` : '';
         
         // System Prompt restrictivo usando SOLO contexto RAG
-          enhancedSystemPrompt = `Eres un asistente de ventas de Artesellos, experto en sus políticas de productos, envíos, y pagos. Tu única fuente de verdad es la sección de 'CONTEXTO PROPORCIONADO' que se encuentra a continuación.
+          enhancedSystemPrompt = `Eres un asistente de ventas de ARTEMA, experto en sus políticas de productos, envíos, y pagos. Tu única fuente de verdad es la sección de 'CONTEXTO PROPORCIONADO' que se encuentra a continuación.
 
 - **INSTRUCCIONES IMPORTANTES:**
   1. Responde la pregunta del usuario usando SOLO la información del 'CONTEXTO PROPORCIONADO'.
@@ -601,7 +601,7 @@ Responde de forma natural usando la información del contexto:`;
               console.log('✅ Contexto de ubicación recuperado:', locationContexts.length, 'fragmentos');
               
               // Construir prompt con contexto de ubicación
-              enhancedSystemPrompt = `Eres un asistente de ventas de Artesellos. Responde la pregunta del usuario sobre ubicación usando SOLO la información del contexto proporcionado. Si el contexto menciona una dirección, ubicación, local, tienda, o lugar, úsala para responder. Variaciones como "donde estan", "cual es tu ubicacion", "direccion", "donde se retiran", "cual es tu direccion", "donde estan ubicados" son TODAS preguntas sobre ubicación.
+              enhancedSystemPrompt = `Eres un asistente de ventas de ARTEMA. Responde la pregunta del usuario sobre ubicación usando SOLO la información del contexto proporcionado. Si el contexto menciona una dirección, ubicación, local, tienda, o lugar, úsala para responder. Variaciones como "donde estan", "cual es tu ubicacion", "direccion", "donde se retiran", "cual es tu direccion", "donde estan ubicados" son TODAS preguntas sobre ubicación.
 
 CONTEXTO PROPORCIONADO:
 ${ragContext}

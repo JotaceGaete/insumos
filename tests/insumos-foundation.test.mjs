@@ -193,7 +193,7 @@ test('hydrateCart rebuilds a valid cart from stored lines and silently drops cor
   assert.deepEqual(hydrateCart(null), EMPTY_CART);
 });
 
-test('insumos cart stays isolated from legacy Artesellos cart, checkout and wholesale modules', async () => {
+test('insumos cart stays isolated from legacy ARTEMA cart, checkout and wholesale modules', async () => {
   const files = await Promise.all([
     'src/features/cart/types.ts',
     'src/features/cart/cartReducer.ts',
@@ -409,14 +409,14 @@ test('all migrated public catalog routes stay within the insumos foundation', as
   assert.match(productDetail, /getProductMediaPublicUrl/);
 });
 
-test('the admin panel and its login gate render bare, without the legacy Artesellos chrome or the insumos storefront shell', async () => {
+test('the admin panel and its login gate render bare, without the legacy ARTEMA chrome or the insumos storefront shell', async () => {
   const clientProviders = await readFile(new URL('src/components/ClientProviders.tsx', root), 'utf8');
   assert.match(clientProviders, /function isAdminRoute\(pathname: string\)/);
   assert.match(clientProviders, /pathname\.startsWith\('\/admin'\)/);
   assert.match(clientProviders, /pathname\.startsWith\('\/acceso-admin'\)/);
   assert.match(clientProviders, /const shell = admin \? \(\s*<>\{children\}<\/>/);
   const adminShell = await readFile(new URL('src/features/admin/components/AdminShell.tsx', root), 'utf8');
-  assert.doesNotMatch(adminShell, /Artesellos|ChatInterface|FloatingWhatsApp/);
+  assert.doesNotMatch(adminShell, /ARTEMA|ChatInterface|FloatingWhatsApp/);
 });
 
 test('checkout rejects an empty cart and non-integer or zero/negative quantities', async () => {
@@ -602,7 +602,7 @@ test('the checkout migration history is preserved, not rewritten: the original a
   assert.ok('20260831195354' > '20260831194938');
 });
 
-test('checkout and order confirmation stay isolated from legacy Artesellos checkout, cart and payment modules', async () => {
+test('checkout and order confirmation stay isolated from legacy ARTEMA checkout, cart and payment modules', async () => {
   const files = await Promise.all([
     'src/features/checkout/types.ts',
     'src/features/checkout/validation.ts',
@@ -1129,7 +1129,7 @@ test('/finalizar-compra keeps billing address synced to shipping while "usar mis
   assert.match(page, /disabled=\{isShipping && form\.useSameAddressForBilling\}/);
 });
 
-test('checkout V2 modules (region/comuna, RUT, shipping policy) stay isolated from legacy Artesellos and never hardcode a payment/transport-carrier API endpoint', async () => {
+test('checkout V2 modules (region/comuna, RUT, shipping policy) stay isolated from legacy ARTEMA and never hardcode a payment/transport-carrier API endpoint', async () => {
   const files = await Promise.all([
     'src/features/checkout/regionComuna.ts',
     'src/features/checkout/rut.ts',
@@ -1508,7 +1508,7 @@ test('/pedido/[id]/confirmacion: shows "Retiro en tienda" for store_pickup order
   assert.match(page, /order\.shippingPolicy === 'pickup' \? 'Gratis \(retiro en tienda\)'/);
 });
 
-test('checkout V2.1 modules (name, email, phone) stay isolated from legacy Artesellos and never hardcode a payment/transport-carrier API endpoint', async () => {
+test('checkout V2.1 modules (name, email, phone) stay isolated from legacy ARTEMA and never hardcode a payment/transport-carrier API endpoint', async () => {
   const files = await Promise.all([
     'src/features/checkout/name.ts',
     'src/features/checkout/email.ts',
@@ -1810,7 +1810,7 @@ test('email_deliveries migration stays out of scope: no ZeptoMail HTTP endpoints
   assert.doesNotMatch(sql, /calle |avenida |dirección de retiro/i);
 });
 
-test('email module (types, provider, mock/ZeptoMail providers, sendTransactionalEmail, orderEmailData, template) stays isolated from legacy Artesellos and never hardcodes a payment/transport-carrier/ZeptoMail endpoint', async () => {
+test('email module (types, provider, mock/ZeptoMail providers, sendTransactionalEmail, orderEmailData, template) stays isolated from legacy ARTEMA and never hardcodes a payment/transport-carrier/ZeptoMail endpoint', async () => {
   const files = await Promise.all([
     'src/features/email/types.ts',
     'src/features/email/provider.ts',
@@ -2001,7 +2001,7 @@ test('payment_preference_columns migration stays out of scope: no Mercado Pago H
   assert.doesNotMatch(sql, /https?:\/\//i);
 });
 
-test('payments module (types, provider, mock/MercadoPago providers, createPaymentPreference) stays isolated from legacy Artesellos — mercadopago itself is expected here, but not the legacy client/env/routes', async () => {
+test('payments module (types, provider, mock/MercadoPago providers, createPaymentPreference) stays isolated from legacy ARTEMA — mercadopago itself is expected here, but not the legacy client/env/routes', async () => {
   const files = await Promise.all([
     'src/features/payments/types.ts',
     'src/features/payments/provider.ts',
@@ -2225,7 +2225,7 @@ test('webhook route: confirmed/ignored/rejected all map to HTTP 200 (per Mercado
   assert.match(source, /return NextResponse\.json\(\{ status: outcome\.status, reason: outcome\.reason \}, \{ status: 200 \}\);/);
 });
 
-test('webhook route stays isolated from legacy Artesellos: no import from src/app/api/checkout/mp, no legacy Supabase client, no hardcoded transport/payment endpoints', async () => {
+test('webhook route stays isolated from legacy ARTEMA: no import from src/app/api/checkout/mp, no legacy Supabase client, no hardcoded transport/payment endpoints', async () => {
   const source = await readFile(new URL('src/app/api/insumos/payments/mercadopago/webhook/route.ts', root), 'utf8');
   // "checkout/mp" legitimately appears in this file's own doc comment
   // explaining that it does NOT touch that legacy path — only real imports
@@ -2312,7 +2312,7 @@ test('no code path lets the browser reach confirm_order_paid or confirm_order_pa
   }
 });
 
-test('payments Etapa 2A module (webhook verification, payment lookup, processing) stays isolated from legacy Artesellos', async () => {
+test('payments Etapa 2A module (webhook verification, payment lookup, processing) stays isolated from legacy ARTEMA', async () => {
   const files = await Promise.all([
     'src/features/payments/verifyMercadoPagoWebhook.ts',
     'src/features/payments/getMercadoPagoPayment.ts',
@@ -2507,7 +2507,7 @@ test('customers/server/queries.ts: every exported query requires admin/staff via
   assert.match(source, /import \{ requireCustomerManager \} from '@\/features\/auth\/server\/authorization';/);
 });
 
-test('customers/server/queries.ts and types.ts stay isolated from legacy Artesellos: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no woocommerce/cartContext, server-only', async () => {
+test('customers/server/queries.ts and types.ts stay isolated from legacy ARTEMA: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no woocommerce/cartContext, server-only', async () => {
   const [queriesSource, typesSource] = await Promise.all([
     readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8'),
     readFile(new URL('src/features/customers/types.ts', root), 'utf8'),
@@ -2648,7 +2648,7 @@ test('customers admin components never send a mutating request and never import 
   assert.doesNotMatch(profileSource, mutationPattern);
 });
 
-test('customers admin UI stays isolated from legacy Artesellos: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no legacy ProductList/AdminShell chrome imports', async () => {
+test('customers admin UI stays isolated from legacy ARTEMA: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no legacy ProductList/AdminShell chrome imports', async () => {
   const [listSource, profileSource, listRoute, detailRoute] = await Promise.all([
     readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8'),
     readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8'),
@@ -2940,7 +2940,7 @@ test('buyer routes are registered as INSUMOS routes (get the storefront header/f
   assert.doesNotMatch(codeOnly, /pathname\.startsWith\('\/iniciar-sesion'\)|pathname\.startsWith\('\/crear-cuenta'\)|pathname\.startsWith\('\/mi-cuenta'\)/);
 });
 
-test('LoginForm and SignupForm both use createInsumosSupabaseBrowser() — the INSUMOS-only browser client — never the legacy Artesellos @/lib/supabase client', async () => {
+test('LoginForm and SignupForm both use createInsumosSupabaseBrowser() — the INSUMOS-only browser client — never the legacy ARTEMA @/lib/supabase client', async () => {
   const [loginSrc, signupSrc] = await Promise.all([
     readFile(loginFormPath, 'utf8'),
     readFile(signupFormPath, 'utf8'),
@@ -3019,7 +3019,7 @@ test('auth pages and components never mention admin/staff/catalog-manager langua
   }
 });
 
-test('/auth/callback uses createInsumosSupabaseServer() — the INSUMOS session-aware server client — never the legacy Artesellos client, and never service_role', async () => {
+test('/auth/callback uses createInsumosSupabaseServer() — the INSUMOS session-aware server client — never the legacy ARTEMA client, and never service_role', async () => {
   const source = await readFile(authCallbackRoutePath, 'utf8');
   assert.match(source, /import \{ createInsumosSupabaseServer \} from '@\/features\/shared\/server\/supabase';/);
   assert.doesNotMatch(source, /@\/lib\/supabase\b/);

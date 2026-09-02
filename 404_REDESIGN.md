@@ -157,11 +157,11 @@ animate-in fade-in duration-700 delay-700
 ❌ <div className="absolute -bottom-4 -right-2 w-6 h-6 border-2 border-green-400 rounded-full animate-pulse delay-300"></div>
 ```
 
-### ❌ 3. Logo de Artesellos Redundante
+### ❌ 3. Logo de ARTEMA Redundante
 ```tsx
 ❌ <div className="flex items-center justify-center mb-4">
-     <img src="/favicon.svg" alt="Artesellos Logo" className="w-16 h-16 mr-3"/>
-     <span className="text-3xl font-bold text-gray-800">Artesellos</span>
+     <img src="/favicon.svg" alt="ARTEMA Logo" className="w-16 h-16 mr-3"/>
+     <span className="text-3xl font-bold text-gray-800">ARTEMA</span>
    </div>
 ```
 

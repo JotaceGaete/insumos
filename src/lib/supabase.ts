@@ -16,7 +16,7 @@ console.log('🔧 Supabase Key:', supabaseAnonKey ? 'Configurada ✅' : 'No conf
 // preserva esa API pública pero difiere el `createClient(...)` real hasta el
 // primer acceso a una propiedad — que solo ocurre en tiempo de request,
 // nunca durante `next build` — así la ausencia de estas variables legacy en
-// un ambiente distinto a Artesellos no rompe la compilación de rutas que
+// un ambiente distinto a ARTEMA no rompe la compilación de rutas que
 // simplemente importan este módulo sin llegar a usarlo.
 function createLazySupabaseClient(factory: () => SupabaseClient<Database>): SupabaseClient<Database> {
   let instance: SupabaseClient<Database> | null = null;

@@ -1,4 +1,4 @@
--- Inventory reservations for ArteInsumos checkout: order/payment states,
+-- Inventory reservations for ARTEMA checkout: order/payment states,
 -- 15-minute holds on stock while a payment attempt is in flight, expiry,
 -- explicit release, and a (still payment-provider-agnostic) conversion to a
 -- real sale. Mercado Pago is NOT connected by this migration — confirm_order_paid

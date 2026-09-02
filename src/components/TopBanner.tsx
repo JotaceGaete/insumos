@@ -36,8 +36,8 @@ export default function TopBanner() {
   }, [items.length])
 
   const fallback: BannerItem[] = [
-    { id: 'f1', text: 'Soporte: soporte@artesellos.cl', url: 'mailto:soporte@artesellos.cl' },
-    { id: 'f2', text: 'Mayoristas: mayoristas@artesellos.cl', url: '/mayoristas' },
+    { id: 'f1', text: 'Soporte: soporte@artema.cl', url: 'mailto:soporte@artema.cl' },
+    { id: 'f2', text: 'Mayoristas: mayoristas@artema.cl', url: '/mayoristas' },
   ]
 
   const renderItems = items.length > 0 ? items : fallback

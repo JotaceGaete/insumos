@@ -17,7 +17,7 @@ export default function TerminosPage() {
             1. Introducción
           </h2>
           <p className="text-gray-600 leading-relaxed">
-            Bienvenido a Artesellos. Estos términos y condiciones regulan el uso de nuestro sitio web
+            Bienvenido a ARTEMA. Estos términos y condiciones regulan el uso de nuestro sitio web
             y los servicios que ofrecemos. Al acceder y utilizar nuestros servicios, aceptas estar
             sujeto a estos términos.
           </p>
@@ -30,7 +30,7 @@ export default function TerminosPage() {
           </h2>
           <div className="text-gray-600 leading-relaxed space-y-4">
             <p>
-              Artesellos ofrece los siguientes servicios:
+              ARTEMA ofrece los siguientes servicios:
             </p>
             <ul className="list-disc list-inside ml-4 space-y-2">
               <li>Diseño y producción de timbres personalizados</li>
@@ -120,11 +120,11 @@ export default function TerminosPage() {
           <div className="text-gray-600 leading-relaxed space-y-4">
             <p>
               Todos los diseños, logos, textos e imágenes de nuestro sitio web son propiedad
-              de Artesellos o de nuestros proveedores de contenido.
+              de ARTEMA o de nuestros proveedores de contenido.
             </p>
             <p>
               Al realizar un pedido de diseño personalizado, el cliente cede los derechos
-              de uso del diseño final a Artesellos para fines de producción únicamente.
+              de uso del diseño final a ARTEMA para fines de producción únicamente.
             </p>
             <p>
               Queda estrictamente prohibida la reproducción, distribución o uso comercial
@@ -165,7 +165,7 @@ export default function TerminosPage() {
           </h2>
           <div className="text-gray-600 leading-relaxed space-y-4">
             <p>
-              Artesellos no se hace responsable por:
+              ARTEMA no se hace responsable por:
             </p>
             <ul className="list-disc list-inside ml-4 space-y-2">
               <li>Retrasos en entregas causados por servicios de courier</li>

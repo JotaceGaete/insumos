@@ -7,7 +7,7 @@ import WhatsAppButton from "@/components/seo/WhatsAppButton";
 export const metadata: Metadata = {
   title: "Timbres automáticos de goma en Chile",
   description:
-    "Timbres automáticos para alto volumen de impresiones: ergonomía, tinta y sellos de goma de calidad. Cotiza con Artesellos en Chile.",
+    "Timbres automáticos para alto volumen de impresiones: ergonomía, tinta y sellos de goma de calidad. Cotiza con ARTEMA en Chile.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/timbres-automaticos" },
 };
@@ -54,7 +54,7 @@ export default function TimbresAutomaticosPage() {
         del entintado. Usar tintas recomendadas para el modelo evita sedimentos que desvían la
         impresión. El caucho grabado, por su parte, debe tener bordes limpios y profundidad
         adecuada: un grabado mediocre se nota más en automáticos porque la repetición acentúa
-        cualquier defecto. En Artesellos producimos placas de goma con control de contraste para
+        cualquier defecto. En ARTEMA producimos placas de goma con control de contraste para
         que cada repetición se vea igual.
       </p>
       <p>

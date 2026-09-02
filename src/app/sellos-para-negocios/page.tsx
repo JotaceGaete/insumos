@@ -7,7 +7,7 @@ import WhatsAppButton from "@/components/seo/WhatsAppButton";
 export const metadata: Metadata = {
   title: "Sellos para negocios y retail en Chile",
   description:
-    "Sellos para negocios: packaging, fidelización y documentos. Timbres de goma y soluciones a medida con Artesellos.",
+    "Sellos para negocios: packaging, fidelización y documentos. Timbres de goma y soluciones a medida con ARTEMA.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/sellos-para-negocios" },
 };
@@ -81,7 +81,7 @@ export default function SellosParaNegociosPage() {
         <Link href="/blog/tipos-de-timbres">tipos de timbres</Link> resume diferencias clave.
       </p>
       <p>
-        En Artesellos fabricamos con foco en calidad de grabado y tiempos de entrega realistas. Si
+        En ARTEMA fabricamos con foco en calidad de grabado y tiempos de entrega realistas. Si
         tienes varias ideas, envíanos fotos de tus empaques o formularios actuales y te propondremos
         una solución escalable, con despacho a tu comuna o región.
       </p>

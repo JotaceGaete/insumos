@@ -3,7 +3,7 @@
 ## ✅ Cambios Implementados
 
 ### 1. **Logo con Imagen**
-- ✅ Reemplazado el texto "Artesellos" por un logo SVG
+- ✅ Reemplazado el texto "ARTEMA" por un logo SVG
 - ✅ Ubicado en `/public/logo.svg`
 - ✅ Optimizado con `next/image` para mejor rendimiento
 - ✅ Altura ajustada a 40x40px para no deformar el menú
@@ -18,7 +18,7 @@
 # Y actualiza en Navbar.tsx línea ~72:
 <Image 
   src="/logo.png"  # Cambia esto
-  alt="Artesellos Logo" 
+  alt="ARTEMA Logo"
   width={40}
   height={40}
   className="object-contain drop-shadow-sm"
@@ -177,7 +177,7 @@ violet-600 → tu-color-secundario-600
 ## 🎯 Próximos Pasos Sugeridos
 
 1. [ ] Reemplazar logo placeholder con logo real de la marca
-2. [ ] Ajustar colores a la identidad visual de Artesellos
+2. [ ] Ajustar colores a la identidad visual de ARTEMA
 3. [ ] Agregar animación al logo (opcional)
 4. [ ] Implementar mega-menu si tienes muchas categorías (opcional)
 5. [ ] Agregar modo oscuro (opcional)

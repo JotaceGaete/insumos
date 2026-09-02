@@ -114,7 +114,7 @@ export default function BlogTiposDeTimbresPage() {
         combina un sello corporativo con sellos creativos más pequeños para campañas.
       </p>
       <p>
-        En Artesellos fabricamos timbres de goma con enfoque en asesoría: no vendemos “el más caro”
+        En ARTEMA fabricamos timbres de goma con enfoque en asesoría: no vendemos “el más caro”
         por defecto, sino el que mejor calce con tu operación. Explora el{" "}
         <Link href="/productos">catálogo</Link>, visita las landings especializadas o escríbenos con
         tu caso: traduciremos estas categorías a una propuesta concreta para tu taller, oficina o

@@ -47,7 +47,7 @@ export default function BlogCuantoCuestaTimbrePage() {
         Finalmente, el canal de compra importa: proveedores con taller propio suelen ofrecer mejor
         control de calidad que intermediarios sin capacidad de ajustar el grabado. Cotizar con
         fotos de referencia y medidas claras evita reprocesos que encarecen el proyecto. En
-        Artesellos preferimos preguntar el uso real antes de proponer: así alineamos costo y
+        ARTEMA preferimos preguntar el uso real antes de proponer: así alineamos costo y
         resultado.
       </p>
 
@@ -114,7 +114,7 @@ export default function BlogCuantoCuestaTimbrePage() {
       <p>
         En resumen, el precio justo es el que entrega nitidez sostenida, asesoría honesta y plazos
         cumplidos. Si buscas números concretos para tu caso, el mejor siguiente paso es un mensaje
-        con detalle: en Artesellos respondemos con alternativas y, si corresponde, más de una opción
+        con detalle: en ARTEMA respondemos con alternativas y, si corresponde, más de una opción
         de precio según prioridad de inversión.
       </p>
       <p>

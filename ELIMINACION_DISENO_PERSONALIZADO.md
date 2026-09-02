@@ -232,7 +232,7 @@ grep -r "customDesign" src/
 
 2. **Contacto** (`/contacto`)
    - Formulario general de contacto
-   - Email directo: `contacto@artesellos.cl`
+   - Email directo: `contacto@artema.cl`
    - WhatsApp: +56 9 22384216
 
 3. **Productos** (`/productos`)

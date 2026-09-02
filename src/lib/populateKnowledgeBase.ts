@@ -6,7 +6,7 @@ import OpenAI from 'openai';
 import { createSupabaseAdmin } from './supabaseServer';
 
 // Cliente OpenAI: construido de forma diferida (singleton memoizado) para
-// que la ausencia de OPENAI_API_KEY en un ambiente distinto a Artesellos no
+// que la ausencia de OPENAI_API_KEY en un ambiente distinto a ARTEMA no
 // rompa `next build` en cualquier ruta que importe este módulo — solo falla
 // si alguna de las funciones exportadas aquí abajo llega a invocarse.
 let openaiClient: OpenAI | null = null;
@@ -101,10 +101,10 @@ export async function insertMultipleKnowledge(
  * Ejemplo de contenido inicial para poblar la base de conocimiento
  */
 export const exampleKnowledge = [
-  'Artesellos es una tienda especializada en timbres personalizados ubicada en el centro de Santiago, Providencia, Chile.',
+  'ARTEMA es una tienda especializada en timbres personalizados ubicada en el centro de Santiago, Providencia, Chile.',
   'Los horarios de atención son: Lunes a Viernes de 9:00 a 18:00, y Sábados de 10:00 a 14:00.',
-  'Para consultas rápidas, los clientes pueden contactar vía WhatsApp. El email de contacto es contacto@artesellos.cl.',
-  'Artesellos realiza envíos a todo Chile. Para pedidos superiores a $15.000, el envío tiene un costo de $3.500. Los pedidos superiores a $50.000 tienen envío gratis.',
+  'Para consultas rápidas, los clientes pueden contactar vía WhatsApp. El email de contacto es contacto@artema.cl.',
+  'ARTEMA realiza envíos a todo Chile. Para pedidos superiores a $15.000, el envío tiene un costo de $3.500. Los pedidos superiores a $50.000 tienen envío gratis.',
   'La marca Shiny es una línea premium de timbres. El modelo Shiny 722 es un timbre de bolsillo con medidas de 14x38mm, ideal para profesionales.',
   'Trodat es una marca reconocida mundialmente de timbres. El modelo Trodat 4912 es un timbre automático estándar muy popular.',
   'Automatik es el nombre de una marca especializada en timbres automáticos. No debe confundirse con el término genérico "automáticos".',

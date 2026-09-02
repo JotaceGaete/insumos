@@ -191,7 +191,7 @@ Tu navbar ahora es:
 
 <div align="center">
 
-**Hecho con ❤️ para Artesellos**
+**Hecho con ❤️ para ARTEMA**
 
 [Ver sitio](http://localhost:3001) | [Documentación](#-documentación-detallada)
 

@@ -7,7 +7,7 @@ import WholesaleDashboard from '@/components/wholesale/WholesaleDashboard'
 import WholesalePendingView from '@/components/wholesale/WholesalePendingView'
 
 export const metadata = {
-  title: 'Programa de Receptorías - Artesellos',
+  title: 'Programa de Receptorías - ARTEMA',
   description: 'Precios mayoristas, producción ágil y soporte técnico para tu negocio.',
 }
 

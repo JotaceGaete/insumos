@@ -23,14 +23,14 @@ function CheckoutContent() {
     }).format(parseFloat(amount));
   };
 
-  // Datos bancarios de Artesellos
+  // Datos bancarios de ARTEMA
   const datosBancarios = {
     banco: 'Banco Santander',
     tipoCuenta: 'Cuenta Corriente',
     numeroCuenta: '92139123',
     rut: '77804207-K',
-    titular: 'Artesellos SpA',
-    email: 'contacto@artesellos.cl'
+    titular: 'ARTEMA SpA',
+    email: 'contacto@artema.cl'
   };
 
   // Copiar datos bancarios al portapapeles
@@ -131,7 +131,7 @@ Monto: ${formatCLP(monto)}`;
             {activeTab === 'transferencia' ? (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <h3 className="font-semibold text-gray-900 mb-4">
-                  Datos Bancarios de Artesellos
+                  Datos Bancarios de ARTEMA
                 </h3>
 
                 {/* Datos Bancarios */}

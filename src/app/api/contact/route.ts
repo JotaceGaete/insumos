@@ -115,7 +115,7 @@ export async function POST(req: Request) {
         <div class="container">
           <div class="header">
             <h1>📬 Nuevo Mensaje de Contacto</h1>
-            <p>Desde artesellos.cl</p>
+            <p>Desde artema.cl</p>
           </div>
           
           <div class="content">
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
 
     // Configurar email
     const mailOptions = {
-      from: `"Formulario Artesellos" <${process.env.SMTP_USER}>`,
+      from: `"Formulario ARTEMA" <${process.env.SMTP_USER}>`,
       to: process.env.CONTACT_MAIL_TO || process.env.SMTP_USER,
       replyTo: email,
       subject: `💬 Nuevo mensaje de ${nombre}`,
@@ -174,7 +174,7 @@ Mensaje:
 ${mensaje}
 
 ---
-Enviado desde artesellos.cl
+Enviado desde artema.cl
 ${new Date().toLocaleString('es-CL')}
       `.trim(),
     };

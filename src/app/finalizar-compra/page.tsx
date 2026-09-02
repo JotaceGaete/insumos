@@ -468,7 +468,7 @@ export default function FinalizarCompraPage() {
                 <div className="flex items-start gap-2 rounded-lg bg-insumos-cream px-4 py-3 text-sm text-stone-600">
                   <Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-insumos-sage" aria-hidden />
                   {shippingPolicy === 'free' ? (
-                    <span>Envío gratis mediante uno de nuestros transportistas disponibles. Tu preferencia queda registrada, pero ArteInsumos podría usar otro transportista si fuera necesario para completar tu envío.</span>
+                    <span>Envío gratis mediante uno de nuestros transportistas disponibles. Tu preferencia queda registrada, pero ARTEMA podría usar otro transportista si fuera necesario para completar tu envío.</span>
                   ) : (
                     <span>Para pedidos menores a {formatPrice(FREE_SHIPPING_THRESHOLD)}, el envío se despacha por pagar mediante el transportista que selecciones.</span>
                   )}

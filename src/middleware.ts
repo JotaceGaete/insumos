@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  // The legacy Artesellos admin API has no place in the independent store.
+  // The legacy ARTEMA admin API has no place in the independent store.
   // Block it before its historical bypasses or credentials can be evaluated.
   if (request.nextUrl.pathname.startsWith('/api/admin/')) {
     return NextResponse.json({ message: 'API administrativa heredada deshabilitada.' }, { status: 410 });

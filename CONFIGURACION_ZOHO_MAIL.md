@@ -12,7 +12,7 @@ SMTP_HOST=smtp.zoho.com
 SMTP_PORT=465
 
 # Tu correo completo de Zoho
-SMTP_USER=tu-email@artesellos.cl
+SMTP_USER=tu-email@artema.cl
 
 # Contraseña de la cuenta de Zoho
 # IMPORTANTE: Usa una contraseña de aplicación si tienes 2FA activado
@@ -20,7 +20,7 @@ SMTP_PASSWORD=tu-contraseña-aqui
 
 # Email de destino (donde se recibirán los mensajes)
 # Si no se especifica, se usa SMTP_USER
-CONTACT_MAIL_TO=contacto@artesellos.cl
+CONTACT_MAIL_TO=contacto@artema.cl
 ```
 
 ---
@@ -36,7 +36,7 @@ CONTACT_MAIL_TO=contacto@artesellos.cl
 **Si TIENES 2FA activado (Recomendado):**
 1. Ve a https://accounts.zoho.com/home#security/app_specific_password
 2. Click en "Generate New Password"
-3. Dale un nombre: "Artesellos Formulario Contacto"
+3. Dale un nombre: "ARTEMA Formulario Contacto"
 4. Copia la contraseña generada
 5. Usa esa contraseña en `SMTP_PASSWORD`
 
@@ -47,9 +47,9 @@ En la raíz de tu proyecto, crea o edita el archivo `.env.local`:
 ```bash
 SMTP_HOST=smtp.zoho.com
 SMTP_PORT=465
-SMTP_USER=contacto@artesellos.cl
+SMTP_USER=contacto@artema.cl
 SMTP_PASSWORD=tu-contraseña-o-app-password
-CONTACT_MAIL_TO=contacto@artesellos.cl
+CONTACT_MAIL_TO=contacto@artema.cl
 ```
 
 ### 3. Reiniciar el Servidor
@@ -94,7 +94,7 @@ La consola debe mostrar:
 ```
 📧 Configurando transporter de Zoho Mail...
 ✅ Conexión SMTP verificada
-📤 Enviando email a: contacto@artesellos.cl
+📤 Enviando email a: contacto@artema.cl
 ✅ Email enviado exitosamente: <message-id>
 ```
 
@@ -167,9 +167,9 @@ tls: {
 
 SMTP_HOST=smtp.zoho.com
 SMTP_PORT=465
-SMTP_USER=contacto@artesellos.cl
+SMTP_USER=contacto@artema.cl
 SMTP_PASSWORD=xxx (contraseña de aplicación)
-CONTACT_MAIL_TO=contacto@artesellos.cl
+CONTACT_MAIL_TO=contacto@artema.cl
 ```
 
 ---
@@ -194,8 +194,8 @@ CONTACT_MAIL_TO=contacto@artesellos.cl
 Recibirás emails con este formato:
 
 ```
-De: Formulario Artesellos <contacto@artesellos.cl>
-Para: contacto@artesellos.cl
+De: Formulario ARTEMA <contacto@artema.cl>
+Para: contacto@artema.cl
 Responder a: email-del-cliente@example.com
 Asunto: 💬 Nuevo mensaje de Juan Pérez
 
@@ -214,7 +214,7 @@ Asunto: 💬 Nuevo mensaje de Juan Pérez
 Edita `.env.local`:
 
 ```bash
-CONTACT_MAIL_TO=ventas@artesellos.cl,soporte@artesellos.cl
+CONTACT_MAIL_TO=ventas@artema.cl,soporte@artema.cl
 ```
 
 ### Cambiar Remitente:
@@ -222,7 +222,7 @@ CONTACT_MAIL_TO=ventas@artesellos.cl,soporte@artesellos.cl
 Edita `src/app/api/contact/route.ts`:
 
 ```typescript
-from: `"Artesellos Contacto" <${process.env.SMTP_USER}>`,
+from: `"ARTEMA Contacto" <${process.env.SMTP_USER}>`,
 ```
 
 ---

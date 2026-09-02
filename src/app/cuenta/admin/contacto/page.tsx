@@ -5,7 +5,7 @@ import { createSupabaseServer } from '@/lib/supabaseServer'
 import ContactMessages from '@/components/admin/ContactMessages'
 
 export const metadata = {
-  title: 'Administrar Contacto - Artesellos',
+  title: 'Administrar Contacto - ARTEMA',
   description: 'Panel de administración para gestionar mensajes de contacto.',
 }
 

@@ -1,4 +1,4 @@
--- ArteInsumos — Perfil de Cliente Etapa 5: resuelve/crea el customer maestro
+-- ARTEMA — Perfil de Cliente Etapa 5: resuelve/crea el customer maestro
 -- atómicamente dentro de create_pending_order y enlaza orders.buyer_id.
 --
 -- Same signature as the currently-deployed create_pending_order — no TS

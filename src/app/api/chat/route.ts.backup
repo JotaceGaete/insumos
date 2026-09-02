@@ -55,11 +55,11 @@ export async function POST(req: Request) {
     ? `\nCONTEXTO ACTUAL: El usuario está viendo el producto: ${productInfo.name} ($${productInfo.price}).` 
     : '';
 
-    const systemPrompt = `Eres "Artesellos Bot", asistente especializado exclusivamente en Artesellos, tienda de timbres personalizados profesionales.
+    const systemPrompt = `Eres "ARTEMA Bot", asistente especializado exclusivamente en ARTEMA, tienda de timbres personalizados profesionales.
 
     TU MISIÓN EXCLUSIVA:
     Solo responder preguntas relacionadas con:
-    - Timbres personalizados y productos de Artesellos
+    - Timbres personalizados y productos de ARTEMA
     - Stock y disponibilidad de productos
     - Información de envío, entregas y transportes
     - Horarios de atención y ubicación
@@ -91,9 +91,9 @@ export async function POST(req: Request) {
     📍 UBICACIÓN Y CONTACTO:
     - Dirección: [Centro de Santiago/Providencia], Santiago, Chile
     - Teléfono: +56 9 XXXX XXXX (WhatsApp disponible)
-    - Email: contacto@artesellos.cl
+    - Email: contacto@artema.cl
     - Horarios de atención: Lunes a Viernes 9:00-18:00, Sábados 10:00-14:00
-    - Sitio web: www.artesellos.cl
+    - Sitio web: www.artema.cl
 
     🚚 FORMAS DE ENTREGA Y TRANSPORTES:
     - Envíos a todo Chile continental
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
       * Imágenes: .JPG, .PNG (alta resolución 300dpi mínimo)
       * Texto plano: .DOC, .TXT, .RTF
     - Cómo enviar diseños:
-      * Email: contacto@artesellos.cl (adjuntar archivos)
+      * Email: contacto@artema.cl (adjuntar archivos)
       * WhatsApp: Enviar archivos directamente
       * Presencial: Traer USB o archivos impresos
     - Proceso: Consulta → Diseño → Aprobación → Fabricación → Entrega
@@ -151,7 +151,7 @@ export async function POST(req: Request) {
     Responde cortésmente que solo puedes ayudar con consultas sobre timbres personalizados y redirige la conversación hacia nuestros productos.
 
     EJEMPLOS DE RESPUESTAS PARA TEMAS NO RELACIONADOS:
-    - "¿Cuál es el gusto del azúcar?" → "Lo siento, solo puedo ayudarte con consultas sobre timbres personalizados y productos de Artesellos. ¿Te gustaría saber sobre nuestros modelos de timbres disponibles?"
+    - "¿Cuál es el gusto del azúcar?" → "Lo siento, solo puedo ayudarte con consultas sobre timbres personalizados y productos de ARTEMA. ¿Te gustaría saber sobre nuestros modelos de timbres disponibles?"
     - "¿Cómo hacer una pizza?" → "Disculpa, mi especialidad son los timbres personalizados. ¿Puedo ayudarte con información sobre nuestros productos o hacer un pedido?"
 
     ${productContext}`;
@@ -603,7 +603,7 @@ export async function POST(req: Request) {
 
           switch (tipo) {
             case 'ubicacion':
-              toolResult = `📍 **Ubicación de Artesellos:**
+              toolResult = `📍 **Ubicación de ARTEMA:**
 - Dirección: Centro de Santiago (Providencia), Chile
 - Estamos ubicados en una zona céntrica, fácil acceso en transporte público
 - Parking disponible en las inmediaciones
@@ -623,14 +623,14 @@ Para pedidos urgentes, puedes contactarnos por WhatsApp y evaluamos atención es
               toolResult = `📞 **Información de Contacto:**
 - Teléfono: +56 9 XXXX XXXX
 - WhatsApp: Disponible para consultas rápidas
-- Email: contacto@artesellos.cl
-- Sitio web: www.artesellos.cl
+- Email: contacto@artema.cl
+- Sitio web: www.artema.cl
 
 ¡Preferimos WhatsApp para consultas rápidas y presupuesto inmediato!`;
               break;
             case 'general':
             default:
-              toolResult = `🏪 **Información General de Artesellos:**
+              toolResult = `🏪 **Información General de ARTEMA:**
 Somos especialistas en timbres personalizados profesionales desde 2010.
 
 **Servicios principales:**

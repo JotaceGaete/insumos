@@ -1,4 +1,4 @@
--- ArteInsumos — Perfil de Cliente Etapa 2: esquema + backfill histórico + RLS.
+-- ARTEMA — Perfil de Cliente Etapa 2: esquema + backfill histórico + RLS.
 --
 -- Creates the customer master entity, decoupled from orders.customer_id
 -- (which references profiles — the staff/admin auth profile, never

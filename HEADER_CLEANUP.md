@@ -238,7 +238,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  [Artesellos]      Inicio Productos Servicios▼ Sobre... │
+│  [ARTEMA]      Inicio Productos Servicios▼ Sobre... │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -251,14 +251,14 @@
 
 ```
 ┌──────────────────────────────────┐
-│  [Artesellos]             [☰]   │
+│  [ARTEMA]             [☰]   │
 └──────────────────────────────────┘
 ```
 
 **Al abrir menú**:
 ```
 ┌──────────────────────────────────┐
-│  [Artesellos]             [✕]   │
+│  [ARTEMA]             [✕]   │
 ├──────────────────────────────────┤
 │  Inicio                          │
 │  Productos                       │
@@ -323,7 +323,7 @@
 ```tsx
 <Link href="/" className="flex items-center">
   <div className="text-2xl font-bold text-indigo-600">
-    Artesellos
+    ARTEMA
   </div>
   <span className="ml-2 text-sm text-gray-500 hidden sm:block">
     Timbres Personalizados

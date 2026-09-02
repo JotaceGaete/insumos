@@ -285,7 +285,7 @@ className="bg-green-500 hover:bg-green-600"
 ### Cambiar mensaje de bienvenida
 En `ChatInterface.tsx`, línea ~104:
 ```tsx
-content: '¡Hola! 👋 Soy el asistente de Artesellos...'
+content: '¡Hola! 👋 Soy el asistente de ARTEMA...'
 ```
 
 ---

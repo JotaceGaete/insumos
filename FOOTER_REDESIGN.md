@@ -27,22 +27,22 @@
 ### Layout Desktop (3 Columnas)
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Artesellos                Enlaces             Síguenos │
+│  ARTEMA                Enlaces             Síguenos │
 │  Timbres personalizados    • Inicio • Productos        │
 │  profesionales             • Contacto           [📷]   │
 │                            ✉️ contacto@...     @arte.. │
 │                            📞 +56 9...                  │
 │                            📍 Bannen 83...              │
 ├─────────────────────────────────────────────────────────┤
-│  © 2024 Artesellos. Todos los derechos reservados.     │
-│  Construido por Artesellos para Artesellos             │
+│  © 2024 ARTEMA. Todos los derechos reservados.     │
+│  Construido por ARTEMA para ARTEMA             │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Layout Mobile (1 Columna - Centrado)
 ```
 ┌──────────────────┐
-│   Artesellos     │
+│   ARTEMA     │
 │   Timbres...     │
 │                  │
 │   Enlaces        │
@@ -68,7 +68,7 @@
 ```tsx
 <div>
   <h2 className="text-2xl font-bold text-white mb-2">
-    Artesellos
+    ARTEMA
   </h2>
   <p className="text-sm text-gray-500">
     Timbres personalizados profesionales
@@ -91,7 +91,7 @@
   
   {/* Contacto */}
   <div>
-    ✉️ contacto@artesellos.cl
+    ✉️ contacto@artema.cl
     📞 +56 9 22384216
     📍 Bannen 83 L 4, Coronel
   </div>
@@ -125,9 +125,9 @@
 ### 4. **Copyright + Créditos**
 ```tsx
 <div className="border-t border-gray-800 mt-8 pt-6 text-center">
-  <p>© 2024 Artesellos. Todos los derechos reservados.</p>
+  <p>© 2024 ARTEMA. Todos los derechos reservados.</p>
   <p className="text-xs text-gray-600 mt-2">
-    Construido por Artesellos para Artesellos
+    Construido por ARTEMA para ARTEMA
   </p>
 </div>
 ```
@@ -230,8 +230,8 @@
 
 ### Email
 ```tsx
-<a href="mailto:contacto@artesellos.cl">
-  contacto@artesellos.cl
+<a href="mailto:contacto@artema.cl">
+  contacto@artema.cl
 </a>
 ```
 
@@ -374,7 +374,7 @@ py-12  // Como antes (48px)
 - [ ] Click en teléfono → opción de llamar (mobile)
 - [ ] Click en Instagram → abre Instagram
 - [ ] Verifica copyright con año actual
-- [ ] Verifica texto "Construido por Artesellos..."
+- [ ] Verifica texto "Construido por ARTEMA..."
 - [ ] Prueba en mobile (reducir ventana)
 - [ ] Verifica que todo esté centrado en mobile
 - [ ] Verifica hover effects en desktop
@@ -396,7 +396,7 @@ py-12  // Como antes (48px)
 ## 🎉 Resultado Final
 
 ### Lo que se mantuvo ✅
-- Nombre de marca "Artesellos"
+- Nombre de marca "ARTEMA"
 - Información de contacto completa
 - Enlaces principales de navegación
 - Copyright

@@ -283,10 +283,10 @@ export default function DiseñoPersonalizadoPage() {
               </Link>
               {' '}o escribirnos a{' '}
               <a
-                href="mailto:contacto@artesellos.cl"
+                href="mailto:contacto@artema.cl"
                 className="text-indigo-600 hover:text-indigo-700 underline"
               >
-                contacto@artesellos.cl
+                contacto@artema.cl
               </a>
             </p>
           </div>

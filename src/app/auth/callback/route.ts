@@ -4,7 +4,7 @@ import { createInsumosSupabaseServer } from '@/features/shared/server/supabase';
 // Standard @supabase/ssr PKCE callback: exchanges the ?code= Supabase Auth
 // appends to the confirmation-link redirect for a real session (cookies get
 // set by createInsumosSupabaseServer's setAll). INSUMOS-only — never shares
-// this route or its cookies with the legacy Artesellos auth.
+// this route or its cookies with the legacy ARTEMA auth.
 //
 // The session established here is already a verified identity (Supabase
 // just confirmed the email/code) — claim_customer_for_current_user() is

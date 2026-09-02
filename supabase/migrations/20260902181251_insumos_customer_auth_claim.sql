@@ -1,4 +1,4 @@
--- ArteInsumos — Perfil de Cliente Etapa 6B: capa DB para vincular
+-- ARTEMA — Perfil de Cliente Etapa 6B: capa DB para vincular
 -- auth.users.id -> customers.user_id de forma explícita y controlada.
 --
 -- NO crea trigger sobre auth.users (decisión explícita de esta etapa).

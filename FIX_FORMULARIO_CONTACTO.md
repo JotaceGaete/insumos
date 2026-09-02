@@ -151,7 +151,7 @@ SELECT * FROM contact_messages;
 
 ### 3. Probar el Formulario
 
-1. Ir a https://artesellos.cl/contacto
+1. Ir a https://artema.cl/contacto
 2. Llenar el formulario
 3. Enviar
 4. ✅ Debe mostrar: "¡Mensaje enviado exitosamente!"

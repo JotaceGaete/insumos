@@ -112,7 +112,7 @@ Write-Host "  ✅ TESTS COMPLETADOS" -ForegroundColor Green
 Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "📋 PRÓXIMOS PASOS:" -ForegroundColor Yellow
-Write-Host "  1. Revisa tu email: contacto@artesellos.cl" -ForegroundColor White
+Write-Host "  1. Revisa tu email: contacto@artema.cl" -ForegroundColor White
 Write-Host "  2. Busca los emails de prueba (pueden estar en SPAM)" -ForegroundColor White
 Write-Host "  3. Verifica el formato HTML del email" -ForegroundColor White
 Write-Host "  4. Prueba responder desde el email" -ForegroundColor White

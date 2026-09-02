@@ -13,7 +13,7 @@ export default function HomeSeoContent() {
           </h2>
           <div className="space-y-4 text-base leading-relaxed text-gray-700">
             <p>
-              En Artesellos fabricamos <strong>timbres de goma</strong> con acabado profesional,
+              En ARTEMA fabricamos <strong>timbres de goma</strong> con acabado profesional,
               ideales para facturas, documentos internos, packaging y comunicación con clientes. Si
               buscas <strong>timbres personalizados</strong> que reflejen la identidad de tu marca,
               podemos trabajar desde tu logo, tipografías corporativas o un boceto sencillo: el
@@ -49,7 +49,7 @@ export default function HomeSeoContent() {
             <p>
               La confianza se construye con detalle: por eso revisamos contornos, contraste y
               espacios mínimos antes de producir. Ya sea que partas desde cero o lleves un archivo
-              listo, en Artesellos encontrarás un equipo enfocado en calidad, cercanía y seguimiento
+              listo, en ARTEMA encontrarás un equipo enfocado en calidad, cercanía y seguimiento
               hasta que tengas el sello en tus manos.
             </p>
           </div>

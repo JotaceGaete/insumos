@@ -1,6 +1,6 @@
 # Sistema de Email - Modo Receive Only
 
-Este documento describe el sistema de email implementado en **modo `receive_only`** para la aplicación Artesellos.
+Este documento describe el sistema de email implementado en **modo `receive_only`** para la aplicación ARTEMA.
 
 ## 📧 Resumen del Sistema
 
@@ -8,7 +8,7 @@ El sistema está configurado para **recibir emails** (mediante Cloudflare Email 
 
 ### 🎯 Objetivo
 
-- **Recibir**: `soporte@artesellos.cl` y `mayoristas@artesellos.cl` → `jotacegaete@gmail.com`
+- **Recibir**: `soporte@artema.cl` y `mayoristas@artema.cl` → `jotacegaete@gmail.com`
 - **Enviar**: Mediante enlaces `mailto:` con asunto y cuerpo prellenados
 - **Auditar**: Todos los emails "enviados" se registran en `mail_log` con status `skipped_receive_only`
 
@@ -19,17 +19,17 @@ El sistema está configurado para **recibir emails** (mediante Cloudflare Email 
 ```env
 # Email Configuration (receive_only mode)
 EMAIL_MODE=receive_only
-EMAIL_SUPPORT=soporte@artesellos.cl
-EMAIL_WHOLESALE=mayoristas@artesellos.cl
-EMAIL_FROM=noreply@artesellos.cl
+EMAIL_SUPPORT=soporte@artema.cl
+EMAIL_WHOLESALE=mayoristas@artema.cl
+EMAIL_FROM=noreply@artema.cl
 ```
 
 ### Cloudflare Email Routing
 
-Configurado en el dominio `artesellos.cl`:
+Configurado en el dominio `artema.cl`:
 
-- `soporte@artesellos.cl` → `jotacegaete@gmail.com`
-- `mayoristas@artesellos.cl` → `jotacegaete@gmail.com`
+- `soporte@artema.cl` → `jotacegaete@gmail.com`
+- `mayoristas@artema.cl` → `jotacegaete@gmail.com`
 
 ## 🗄️ Base de Datos
 
@@ -107,9 +107,9 @@ Configurado en el dominio `artesellos.cl`:
 4. Se muestra mensaje de éxito con ID y botón `mailto:`
 
 **Mensaje de Éxito**:
-> "Tu mensaje quedó registrado con el ID #123. Si querés acelerar la respuesta, escribinos a soporte@artesellos.cl citando este ID."
+> "Tu mensaje quedó registrado con el ID #123. Si querés acelerar la respuesta, escribinos a soporte@artema.cl citando este ID."
 
-**Botón mailto**: `mailto:soporte@artesellos.cl?subject=Consulta%20%23123`
+**Botón mailto**: `mailto:soporte@artema.cl?subject=Consulta%20%23123`
 
 ### 2. Solicitud Mayorista
 
@@ -124,9 +124,9 @@ Configurado en el dominio `artesellos.cl`:
 6. Se muestra mensaje de éxito con ID y botón `mailto:`
 
 **Mensaje de Éxito**:
-> "Recibimos tu solicitud #456. Tus archivos están listos para revisión. Si necesitás agregar info, escribinos a mayoristas@artesellos.cl citando este ID."
+> "Recibimos tu solicitud #456. Tus archivos están listos para revisión. Si necesitás agregar info, escribinos a mayoristas@artema.cl citando este ID."
 
-**Botón mailto**: `mailto:mayoristas@artesellos.cl?subject=Solicitud%20Mayorista%20%23456`
+**Botón mailto**: `mailto:mayoristas@artema.cl?subject=Solicitud%20Mayorista%20%23456`
 
 ## 👨‍💼 Panel de Administración
 
@@ -156,9 +156,9 @@ Configurado en el dominio `artesellos.cl`:
 ```typescript
 export const EMAIL_CONFIG = {
   MODE: process.env.EMAIL_MODE || 'receive_only',
-  SUPPORT: process.env.EMAIL_SUPPORT || 'soporte@artesellos.cl',
-  WHOLESALE: process.env.EMAIL_WHOLESALE || 'mayoristas@artesellos.cl',
-  FROM: process.env.EMAIL_FROM || 'noreply@artesellos.cl',
+  SUPPORT: process.env.EMAIL_SUPPORT || 'soporte@artema.cl',
+  WHOLESALE: process.env.EMAIL_WHOLESALE || 'mayoristas@artema.cl',
+  FROM: process.env.EMAIL_FROM || 'noreply@artema.cl',
 }
 
 export function generateSupportMailto(id: string | number): string {

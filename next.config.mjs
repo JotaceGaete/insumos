@@ -8,7 +8,7 @@ const nextConfig = {
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     minimumCacheTTL: 60,
     domains: [
-      'artesellos.cl',
+      'artema.cl',
       'media.artesellos.cl',
       'i.postimg.cc',
       'ueannxyewstuptivnzjf.supabase.co',
@@ -21,7 +21,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'ueannxyewstuptivnzjf.supabase.co', port: '', pathname: '/storage/v1/object/**' },
       { protocol: 'https', hostname: '**.r2.dev', port: '', pathname: '/**' },
       { protocol: 'https', hostname: 'df2db09c7e5c3e81be99a6984812ac80.r2.cloudflarestorage.com', port: '', pathname: '/**' },
-      { protocol: 'https', hostname: 'artesellos.cl', port: '', pathname: '/**' },
+      { protocol: 'https', hostname: 'artema.cl', port: '', pathname: '/**' },
       { protocol: 'https', hostname: 'media.artesellos.cl', port: '', pathname: '/**' },
     ],
   },

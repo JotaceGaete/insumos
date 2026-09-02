@@ -1,7 +1,7 @@
 /**
  * Rutas públicas ya migradas al modelo de datos INSUMOS.
  * Se usa para que la carcasa global (header/footer/widgets) sepa
- * cuándo mostrar la identidad neutral INSUMOS en lugar de la legacy Artesellos,
+ * cuándo mostrar la identidad neutral INSUMOS en lugar de la legacy ARTEMA,
  * sin tener que reestructurar el layout raíz compartido.
  */
 export function isInsumosRoute(pathname: string): boolean {

@@ -51,7 +51,7 @@ export default function TimbresPersonalizadosPage() {
       <p>
         Los <Link href="/">timbres de goma</Link> tradicionales montados en madera o soporte
         económico son excelentes para trabajos manuales y mesones de atención. Si necesitas
-        productividad y alineación constante, conviene evaluar opciones automáticas; en Artesellos
+        productividad y alineación constante, conviene evaluar opciones automáticas; en ARTEMA
         puedes revisar <Link href="/timbres-automaticos">timbres automáticos</Link> para entender
         diferencias de ergonomía y reposición de tinta.
       </p>

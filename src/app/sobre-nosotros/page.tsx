@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Sobre nosotros",
   description:
-    "Artesellos: timbres personalizados y sellos de goma con taller en la Región del Biobío, Chile.",
+    "ARTEMA: timbres personalizados y sellos de goma con taller en la Región del Biobío, Chile.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/sobre-nosotros" },
 };
@@ -15,7 +15,7 @@ export default function SobreNosotrosPage() {
       {/* Hero Section */}
       <div className="text-center mb-16">
         <h1 className="text-4xl font-bold text-gray-900 mb-4">
-          Sobre Artesellos
+          Sobre ARTEMA
         </h1>
         <p className="text-xl text-gray-600 max-w-3xl mx-auto">
           Somos especialistas en timbres personalizados, creando recuerdos únicos
@@ -32,7 +32,7 @@ export default function SobreNosotrosPage() {
             </h2>
             <div className="space-y-4 text-gray-600">
               <p>
-                Artesellos nació en 2018 como un pequeño taller familiar en Santiago,
+                ARTEMA nació en 2018 como un pequeño taller familiar en Santiago,
                 Chile. Todo comenzó con la pasión por crear recuerdos únicos y
                 personalizados para ocasiones especiales.
               </p>
@@ -141,7 +141,7 @@ export default function SobreNosotrosPage() {
             Nuestro Equipo
           </h2>
           <p className="text-lg text-gray-600">
-            Las personas detrás de Artesellos
+            Las personas detrás de ARTEMA
           </p>
         </div>
 
@@ -201,7 +201,7 @@ export default function SobreNosotrosPage() {
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg p-8">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold mb-4">
-              Artesellos en Números
+              ARTEMA en Números
             </h2>
             <p className="text-indigo-100">
               Nuestra trayectoria y crecimiento año tras año

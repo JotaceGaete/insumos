@@ -1,4 +1,4 @@
--- Extend the independent insumos variant model. Do not run this against Artesellos.
+-- Extend the independent insumos variant model. Do not run this against ARTEMA.
 do $$
 begin
   if exists (
