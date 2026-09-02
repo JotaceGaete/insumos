@@ -2423,3 +2423,102 @@ test('customers migration stays out of scope: no checkout RPCs, no Mercado Pago,
   const sql = await readFile(customersMigrationPath, 'utf8');
   assert.doesNotMatch(sql, /create_pending_order|confirm_order_paid|confirm_order_payment_reference|reserve_order_inventory|release_order_inventory|release_order_payment_reservation|inventory_movements|inventory_reservations|stock_quantity|mercadopago|payment_reference/i);
 });
+
+// ==========================================================================
+// Customer profile Etapa 3: backend/queries only — listCustomers,
+// getCustomerById, listCustomerOrders. No admin UI, no mutations, no
+// checkout integration yet.
+// ==========================================================================
+
+test('customers/server/queries.ts: listCustomers supports pagination (page/pageSize in, {customers,total,page,pageSize} out)', async () => {
+  const source = await readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8');
+  assert.match(source, /export async function listCustomers\(params: ListCustomersParams = \{\}\): Promise<ListCustomersResult>/);
+  assert.match(source, /const page = Math\.max\(1, params\.page \?\? 1\);/);
+  assert.match(source, /const pageSize = Math\.min\(MAX_PAGE_SIZE, Math\.max\(1, params\.pageSize \?\? DEFAULT_PAGE_SIZE\)\);/);
+  assert.match(source, /return \{ customers: withSummaries\.slice\(start, start \+ pageSize\), total, page, pageSize \};/);
+});
+
+test('customers/server/queries.ts: listCustomers searches email_normalized, full_name and phone_normalized together (case-insensitive), sanitizing the term against PostgREST filter-string syntax first', async () => {
+  const source = await readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8');
+  assert.match(source, /function sanitizeSearchTerm\(raw: string\): string \{\s*\n\s*return raw\.trim\(\)\.replace\(\/\[,\(\)\]\/g, ''\);/);
+  assert.match(source, /query\.or\(`email_normalized\.ilike\.\$\{pattern\},full_name\.ilike\.\$\{pattern\},phone_normalized\.ilike\.\$\{pattern\}`\)/);
+  assert.match(source, /const pattern = `%\$\{term\.toLowerCase\(\)\}%`;/);
+});
+
+test('customers/server/queries.ts: commercial metrics (totalOrders/totalSpent/averageOrderValue/firstOrderAt/lastOrderAt) only ever count status IN (paid, fulfilled) — cancelled, pending and awaiting_payment orders are all excluded, and the same filter is used for both listCustomers and getCustomerById so the average is never computed over a mismatched numerator/denominator', async () => {
+  const source = await readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8');
+  assert.match(source, /const COMMERCIAL_ORDER_STATUSES = \['paid', 'fulfilled'\] as const;/);
+  // Strip both comment styles — doc comments legitimately discuss why
+  // cancelled/pending/awaiting_payment are excluded, which would otherwise
+  // trip a naive substring check against the actual code.
+  const codeOnly = source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(codeOnly, /'cancelled'|'pending'|'awaiting_payment'/);
+  // Both call sites reuse the same constant — no second, possibly-drifted status list.
+  const commercialStatusUsages = (source.match(/COMMERCIAL_ORDER_STATUSES/g) || []).length;
+  assert.ok(commercialStatusUsages >= 4, 'the single COMMERCIAL_ORDER_STATUSES constant must be reused by the .in() filter, isCommercialStatus(), and both its doc-comment references');
+  assert.match(source, /averageOrderValue: Math\.round\(totalSpent \/ rows\.length\)/);
+});
+
+test('customers/server/queries.ts: getCustomerById returns master data + the same commercial summary + preferences (delivery method/carrier/billing doc type) derived from the single most recent order regardless of its status, defaulting to null rather than guessing when the customer has no orders', async () => {
+  const source = await readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8');
+  assert.match(source, /export async function getCustomerById\(customerId: string\): Promise<CustomerProfile \| null>/);
+  assert.match(source, /const mostRecent = orders\[0\] \?\? null;/);
+  assert.match(source, /lastDeliveryMethod: mostRecent\?\.delivery_method \?\? null,/);
+  assert.match(source, /lastPreferredCarrier: mostRecent\?\.preferred_carrier \?\? null,/);
+  assert.match(source, /lastBillingDocumentType: mostRecent\?\.billing_document_type \?\? null,/);
+  // mostRecent is index 0 of the orders query — which must itself already be
+  // sorted created_at desc for "most recent" to be correct.
+  const ordersQueryIndex = source.indexOf(".from('orders')", source.indexOf('getCustomerById'));
+  const ordersQueryBlock = source.slice(ordersQueryIndex, source.indexOf(';', ordersQueryIndex));
+  assert.match(ordersQueryBlock, /\.order\('created_at', \{ ascending: false \}\)/);
+});
+
+test('customers/server/queries.ts: listCustomerOrders returns full history newest-first, unfiltered by status (unlike the commercial summary, cancelled/pending orders stay visible for admin context)', async () => {
+  const source = await readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8');
+  assert.match(source, /export async function listCustomerOrders\(customerId: string\): Promise<CustomerOrderSummary\[\]>/);
+  const fnStart = source.indexOf('export async function listCustomerOrders');
+  const fnBody = source.slice(fnStart, source.indexOf('\n}\n', fnStart));
+  assert.match(fnBody, /\.eq\('buyer_id', customerId\)/);
+  assert.match(fnBody, /\.order\('created_at', \{ ascending: false \}\)/);
+  assert.doesNotMatch(fnBody, /\.in\('status'|COMMERCIAL_ORDER_STATUSES/);
+});
+
+test('customers/server/queries.ts: order snapshot fields (customer_name/customer_email/customer_phone/shipping_address) are read and returned as-is — the module never calls .update()/.insert()/.delete() on orders or customers, so no snapshot or backfilled row can be altered by a read', async () => {
+  const source = await readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8');
+  assert.match(source, /customer_name, customer_email, customer_phone, shipping_address/);
+  assert.match(source, /customerName: row\.customer_name,\s*\n\s*customerEmail: row\.customer_email,\s*\n\s*customerPhone: row\.customer_phone,\s*\n\s*shippingAddress: row\.shipping_address,/);
+  assert.doesNotMatch(source, /\.update\(|\.insert\(|\.delete\(|\.upsert\(/);
+});
+
+test('customers/server/queries.ts: every exported query requires admin/staff via requireCustomerManager() before touching Supabase, and requireCustomerManager reuses requireInsumosRole (no copied/duplicated auth logic)', async () => {
+  const source = await readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8');
+  const authSource = await readFile(new URL('src/features/auth/server/authorization.ts', root), 'utf8');
+  assert.match(authSource, /export const requireCustomerManager = \(\) => requireInsumosRole\(\['admin', 'staff'\]\);/);
+  const exportedFns = ['listCustomers', 'getCustomerById', 'listCustomerOrders'];
+  for (const fnName of exportedFns) {
+    const fnStart = source.indexOf(`export async function ${fnName}`);
+    assert.ok(fnStart >= 0, `${fnName} must be exported`);
+    const nextLines = source.slice(fnStart, fnStart + 200);
+    assert.match(nextLines, /await requireCustomerManager\(\);/);
+  }
+  assert.match(source, /import \{ requireCustomerManager \} from '@\/features\/auth\/server\/authorization';/);
+});
+
+test('customers/server/queries.ts and types.ts stay isolated from legacy Artesellos: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no woocommerce/cartContext, server-only', async () => {
+  const [queriesSource, typesSource] = await Promise.all([
+    readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8'),
+    readFile(new URL('src/features/customers/types.ts', root), 'utf8'),
+  ]);
+  const legacyPattern = /@\/lib\/supabase|@\/lib\/woocommerce|@\/lib\/cartContext|NEXT_PUBLIC_SUPABASE\b|createSupabaseAdmin\(\)|createSupabaseServer\(\)/;
+  assert.doesNotMatch(queriesSource, legacyPattern);
+  assert.doesNotMatch(typesSource, legacyPattern);
+  assert.match(queriesSource, /^import 'server-only';/m);
+  assert.match(queriesSource, /createInsumosSupabaseAdmin/);
+});
+
+test('customers/types.ts: reuses DeliveryMethod/PreferredCarrier/BillingDocumentType/CheckoutShippingAddress from the checkout feature instead of redefining them', async () => {
+  const source = await readFile(new URL('src/features/customers/types.ts', root), 'utf8');
+  assert.match(source, /import type \{ BillingDocumentType, DeliveryMethod, PreferredCarrier \} from '@\/features\/checkout\/shipping';/);
+  assert.match(source, /import type \{ CheckoutShippingAddress \} from '@\/features\/checkout\/types';/);
+  assert.doesNotMatch(source, /export type DeliveryMethod|export type PreferredCarrier|export type BillingDocumentType/);
+});

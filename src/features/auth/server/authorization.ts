@@ -18,3 +18,4 @@ export async function requireInsumosRole(allowedRoles: AppRole[]) {
 }
 
 export const requireCatalogManager = () => requireInsumosRole(['admin', 'staff']);
+export const requireCustomerManager = () => requireInsumosRole(['admin', 'staff']);
