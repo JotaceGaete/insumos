@@ -2902,3 +2902,182 @@ test('regression guard: the original legacy orders/order_items policies (orders.
   assert.match(sql, /create policy "customers read own orders" on public\.orders for select using \(customer_id = auth\.uid\(\) or public\.has_role\('admin'\) or public\.has_role\('staff'\)\);/);
   assert.match(sql, /create policy "customers read own order items" on public\.order_items for select using \(exists \(select 1 from public\.orders where orders\.id = order_items\.order_id and orders\.customer_id = auth\.uid\(\)\) or public\.has_role\('admin'\) or public\.has_role\('staff'\)\);/);
 });
+
+// ==========================================================================
+// Customer profile Etapa 6D: storefront buyer authentication — signup,
+// login (+ claim), logout, requireBuyerAccount(), and the /mi-cuenta guard.
+// No dashboard yet (6E/6F), no RLS changes (6C stays as approved), no
+// checkout changes (6G). All structural checks strip comments first to
+// avoid the recurring false-positive-comment bug from earlier stages.
+// ==========================================================================
+
+const loginFormPath = new URL('src/features/auth/components/LoginForm.tsx', root);
+const signupFormPath = new URL('src/features/auth/components/SignupForm.tsx', root);
+const signOutButtonPath = new URL('src/features/auth/components/SignOutButton.tsx', root);
+const authorizationPath = new URL('src/features/auth/server/authorization.ts', root);
+const iniciarSesionPagePath = new URL('src/app/iniciar-sesion/page.tsx', root);
+const crearCuentaPagePath = new URL('src/app/crear-cuenta/page.tsx', root);
+const authCallbackRoutePath = new URL('src/app/auth/callback/route.ts', root);
+const miCuentaLayoutPath = new URL('src/app/mi-cuenta/layout.tsx', root);
+const miCuentaPagePath = new URL('src/app/mi-cuenta/page.tsx', root);
+const clientProvidersPath = new URL('src/components/ClientProviders.tsx', root);
+const headerPath = new URL('src/components/insumos/Header.tsx', root);
+
+const insumosRoutesPath = new URL('src/lib/insumosRoutes.ts', root);
+
+test('buyer routes are registered as INSUMOS routes (get the storefront header/footer) and are never treated as admin routes (which get bare chrome)', async () => {
+  const [routesSql, providersSql] = await Promise.all([
+    readFile(insumosRoutesPath, 'utf8'),
+    readFile(clientProvidersPath, 'utf8'),
+  ]);
+  assert.match(routesSql, /pathname\.startsWith\("\/iniciar-sesion"\)/);
+  assert.match(routesSql, /pathname\.startsWith\("\/crear-cuenta"\)/);
+  assert.match(routesSql, /pathname\.startsWith\("\/mi-cuenta"\)/);
+  // isAdminRoute() in ClientProviders only ever matched /admin and
+  // /acceso-admin before this stage and must still only match those.
+  const codeOnly = providersSql.replace(/\/\/[^\n]*/g, '');
+  assert.match(codeOnly, /pathname\.startsWith\('\/admin'\) \|\| pathname\.startsWith\('\/acceso-admin'\)/);
+  assert.doesNotMatch(codeOnly, /pathname\.startsWith\('\/iniciar-sesion'\)|pathname\.startsWith\('\/crear-cuenta'\)|pathname\.startsWith\('\/mi-cuenta'\)/);
+});
+
+test('LoginForm and SignupForm both use createInsumosSupabaseBrowser() — the INSUMOS-only browser client — never the legacy Artesellos @/lib/supabase client', async () => {
+  const [loginSrc, signupSrc] = await Promise.all([
+    readFile(loginFormPath, 'utf8'),
+    readFile(signupFormPath, 'utf8'),
+  ]);
+  for (const source of [loginSrc, signupSrc]) {
+    assert.match(source, /import \{ createInsumosSupabaseBrowser \} from '@\/features\/shared\/client\/supabase';/);
+    assert.doesNotMatch(source, /@\/lib\/supabase\b/);
+  }
+});
+
+test('LoginForm calls claim_customer_for_current_user() immediately after signInWithPassword() succeeds, with no arguments — identity comes only from the session, never a client-supplied email/customer id', async () => {
+  const source = await readFile(loginFormPath, 'utf8');
+  const signInIndex = source.indexOf('signInWithPassword');
+  const claimIndex = source.indexOf("rpc('claim_customer_for_current_user')");
+  assert.ok(signInIndex >= 0 && claimIndex > signInIndex, 'claim must be called after sign-in, in that order');
+  assert.match(source, /supabase\.rpc\('claim_customer_for_current_user'\)/);
+  // No parentheses content — no object/args passed to the RPC call.
+  assert.doesNotMatch(source, /rpc\('claim_customer_for_current_user',\s*\{/);
+});
+
+test('claim_customer_for_current_user() is never reimplemented in TypeScript — no direct .update()/.from(\'customers\') write touching user_id anywhere in the new auth code', async () => {
+  const files = await Promise.all(
+    [loginFormPath, signupFormPath, authCallbackRoutePath, authorizationPath, iniciarSesionPagePath, crearCuentaPagePath, miCuentaLayoutPath, miCuentaPagePath]
+      .map((p) => readFile(p, 'utf8'))
+  );
+  for (const source of files) {
+    assert.doesNotMatch(source, /\.update\(\s*\{[^}]*user_id/s);
+    assert.doesNotMatch(source, /\.from\(['"]customers['"]\)\s*\.(insert|update|upsert|delete)\(/);
+  }
+});
+
+test('requireBuyerAccount() resolves identity exclusively via customers.user_id = auth.uid() — never via user_roles or has_role(\'customer\'), and never accepts an email/id argument', async () => {
+  const source = await readFile(authorizationPath, 'utf8');
+  const fnStart = source.indexOf('export async function requireBuyerAccount()');
+  assert.ok(fnStart >= 0, 'requireBuyerAccount must take zero parameters');
+  const fnBody = source.slice(fnStart, source.indexOf('\n}', fnStart));
+  assert.match(fnBody, /auth\.getUser\(\)/);
+  assert.doesNotMatch(fnBody, /user_roles|has_role/);
+});
+
+test('resolveBuyerSessionForAuthPages() calls claim_customer_for_current_user() at most once per invocation (no retry loop) — used only by /iniciar-sesion and /crear-cuenta to avoid a redirect loop with /mi-cuenta\'s guard', async () => {
+  const source = await readFile(authorizationPath, 'utf8');
+  const fnStart = source.indexOf('export async function resolveBuyerSessionForAuthPages()');
+  const fnBody = source.slice(fnStart, source.indexOf('\nexport ', fnStart + 1) === -1 ? source.length : source.indexOf('\nexport ', fnStart + 1));
+  const claimCalls = (fnBody.match(/\.rpc\('claim_customer_for_current_user'\)/g) || []).length;
+  assert.strictEqual(claimCalls, 1, 'exactly one claim attempt per call — no loop');
+});
+
+test('SignOutButton calls supabase.auth.signOut() and navigates away — a real logout, not just a UI state reset', async () => {
+  const source = await readFile(signOutButtonPath, 'utf8');
+  assert.match(source, /createInsumosSupabaseBrowser\(\)\.auth\.signOut\(\)/);
+  assert.match(source, /router\.replace\('\/'\)/);
+});
+
+test('/mi-cuenta/layout.tsx protects the route with requireBuyerAccount() and redirects to /iniciar-sesion on failure — the same guard pattern as admin/layout.tsx, but never importing requireCatalogManager/requireCustomerManager', async () => {
+  const source = await readFile(miCuentaLayoutPath, 'utf8');
+  assert.match(source, /await requireBuyerAccount\(\)/);
+  assert.match(source, /redirect\('\/iniciar-sesion'\)/);
+  assert.doesNotMatch(source, /requireCatalogManager|requireCustomerManager/);
+});
+
+test('/mi-cuenta page is a genuinely minimal MVP: renders account name/email and a sign-out control, with no KPI/order-history/order-detail/profile-editing UI (that belongs to 6E/6F)', async () => {
+  const source = await readFile(miCuentaPagePath, 'utf8');
+  assert.match(source, /requireBuyerAccount\(\)/);
+  assert.match(source, /SignOutButton/);
+  assert.doesNotMatch(source, /totalOrders|totalSpent|averageOrderValue|listCustomerOrders|OrderStatusBadge/);
+});
+
+test('auth pages and components never mention admin/staff/catalog-manager language — the buyer experience stays fully separate from the admin one', async () => {
+  const files = await Promise.all(
+    [loginFormPath, signupFormPath, iniciarSesionPagePath, crearCuentaPagePath, miCuentaPagePath]
+      .map((p) => readFile(p, 'utf8'))
+  );
+  for (const source of files) {
+    assert.doesNotMatch(source, /\badmin\b|\bstaff\b|catalog manager/i);
+  }
+});
+
+test('/auth/callback uses createInsumosSupabaseServer() — the INSUMOS session-aware server client — never the legacy Artesellos client, and never service_role', async () => {
+  const source = await readFile(authCallbackRoutePath, 'utf8');
+  assert.match(source, /import \{ createInsumosSupabaseServer \} from '@\/features\/shared\/server\/supabase';/);
+  assert.doesNotMatch(source, /@\/lib\/supabase\b/);
+  assert.doesNotMatch(source, /createInsumosSupabaseAdmin|service_role/i);
+});
+
+test('/auth/callback: exchangeCodeForSession(code) happens strictly before the claim RPC call — the session must exist before identity resolution is attempted', async () => {
+  const source = await readFile(authCallbackRoutePath, 'utf8');
+  const exchangeIndex = source.indexOf('exchangeCodeForSession(code)');
+  const claimIndex = source.indexOf("rpc('claim_customer_for_current_user')");
+  assert.ok(exchangeIndex >= 0 && claimIndex > exchangeIndex, 'claim must be called after the code exchange, in that order');
+});
+
+test('/auth/callback calls claim_customer_for_current_user() with no arguments — same rule as LoginForm, identity comes only from the session just established', async () => {
+  const source = await readFile(authCallbackRoutePath, 'utf8');
+  assert.match(source, /supabase\.rpc\('claim_customer_for_current_user'\)/);
+  assert.doesNotMatch(source, /rpc\('claim_customer_for_current_user',\s*\{/);
+});
+
+test('/auth/callback: claim success is what gates the /mi-cuenta redirect — a failed claim redirects to /iniciar-sesion instead, never granting access to /mi-cuenta on an unlinked session (no more unconditional redirect after exchange)', async () => {
+  const source = await readFile(authCallbackRoutePath, 'utf8');
+  // if (claimError) { ... redirect to /iniciar-sesion ... } — and only
+  // AFTER that block, unconditionally, the /mi-cuenta success redirect.
+  assert.match(
+    source,
+    /const \{ error: claimError \} = await supabase\.rpc\('claim_customer_for_current_user'\);\s*\n\s*if \(claimError\) \{\s*\n(?:[^\n]*\n)*?\s*return NextResponse\.redirect\(`\$\{origin\}\/iniciar-sesion`\);\s*\n\s*\}\s*\n\s*\n\s*return NextResponse\.redirect\(`\$\{origin\}\/mi-cuenta`\);/
+  );
+});
+
+test('/auth/callback: missing code or a failed exchangeCodeForSession both redirect to /iniciar-sesion without ever calling claim — no attempt to resolve identity from an unverified/nonexistent session, no internal error details exposed', async () => {
+  const source = await readFile(authCallbackRoutePath, 'utf8');
+  assert.match(source, /if \(!code\) \{\s*\n\s*return NextResponse\.redirect\(`\$\{origin\}\/iniciar-sesion`\);/);
+  const exchangeIndex = source.indexOf('exchangeCodeForSession(code)');
+  const claimIndex = source.indexOf("rpc('claim_customer_for_current_user')");
+  const betweenExchangeAndClaim = source.slice(exchangeIndex, claimIndex);
+  assert.match(betweenExchangeAndClaim, /if \(exchangeError\) \{\s*\n\s*return NextResponse\.redirect\(`\$\{origin\}\/iniciar-sesion`\);/);
+  // No raw error message/object ever gets interpolated into a response.
+  assert.doesNotMatch(source, /exchangeError\.message|claimError\.message|JSON\.stringify\(.*[Ee]rror/);
+});
+
+// Live click-through of a real confirmation email remains untested end-to-end:
+// the Supabase project's configured Redirect URLs only allow the fixed Site
+// URL (not this environment's dynamically-assigned dev port), and the
+// Browser pane sandboxing blocks navigating to Supabase's own external
+// /auth/v1/verify endpoint. This was verified instead by code review against
+// the standard @supabase/ssr PKCE pattern, plus the structural tests above.
+// Documented rather than pretending a real email click was exercised.
+
+test('regression guard: requireCatalogManager/requireCustomerManager/requireInsumosRole in authorization.ts are byte-identical to before Etapa 6D — only new functions were appended, nothing admin-related was edited', async () => {
+  const source = await readFile(authorizationPath, 'utf8');
+  assert.match(source, /export async function requireInsumosRole\(allowedRoles: AppRole\[\]\) \{\s*\n\s*const supabase = await createInsumosSupabaseServer\(\);\s*\n\s*const \{ data: \{ user \}, error: userError \} = await supabase\.auth\.getUser\(\);\s*\n\s*if \(userError \|\| !user\) throw new Error\('No autenticado\.'\);/);
+  assert.match(source, /export const requireCatalogManager = \(\) => requireInsumosRole\(\['admin', 'staff'\]\);/);
+  assert.match(source, /export const requireCustomerManager = \(\) => requireInsumosRole\(\['admin', 'staff'\]\);/);
+});
+
+test('Header shows session-aware buyer links ("Iniciar sesión"/"Crear cuenta" when logged out, "Mi cuenta" when logged in) instead of the old disabled "Cuenta (próximamente)" placeholder', async () => {
+  const source = await readFile(headerPath, 'utf8');
+  assert.doesNotMatch(source, /Cuenta \(próximamente\)/);
+  assert.match(source, /href=\{hasSession \? '\/mi-cuenta' : '\/iniciar-sesion'\}/);
+  assert.match(source, /href="\/crear-cuenta"/);
+});

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Leaf, Menu, X, Search, User, ShoppingBag, Truck, HelpCircle, Phone } from 'lucide-react'
 import { useInsumosCart } from '@/features/cart/CartProvider'
+import { createInsumosSupabaseBrowser } from '@/features/shared/client/supabase'
 
 const navLinks = [
   { href: '/', label: 'Inicio' },
@@ -20,6 +21,20 @@ export default function InsumosHeader() {
   const pathname = usePathname()
   const router = useRouter()
   const { itemCount, openDrawer } = useInsumosCart()
+  // Session presence only — enough to switch between "Iniciar sesión" /
+  // "Crear cuenta" and "Mi cuenta". Whether the session already resolved a
+  // linked customer is a /mi-cuenta (server-side, RLS-scoped) concern, not
+  // the header's — it never queries customers itself.
+  const [hasSession, setHasSession] = useState(false)
+
+  useEffect(() => {
+    const supabase = createInsumosSupabaseBrowser()
+    supabase.auth.getSession().then(({ data }) => setHasSession(Boolean(data.session)))
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(Boolean(session))
+    })
+    return () => subscription.subscription.unsubscribe()
+  }, [])
 
   const isActiveLink = (href: string) => {
     if (href === '/') return pathname === '/'
@@ -111,12 +126,13 @@ export default function InsumosHeader() {
           </form>
 
           <div className="ml-auto flex items-center gap-2 lg:ml-0">
-            <span
-              title="Cuenta (próximamente)"
-              className="hidden h-10 w-10 cursor-default select-none items-center justify-center rounded-full border border-insumos-line text-stone-500 sm:inline-flex"
+            <Link
+              href={hasSession ? '/mi-cuenta' : '/iniciar-sesion'}
+              title={hasSession ? 'Mi cuenta' : 'Iniciar sesión'}
+              className="hidden h-10 w-10 items-center justify-center rounded-full border border-insumos-line text-stone-600 transition-colors hover:bg-insumos-cream hover:text-insumos-forest sm:inline-flex"
             >
               <User className="h-5 w-5" aria-hidden />
-            </span>
+            </Link>
             <button
               type="button"
               onClick={openDrawer}
@@ -171,6 +187,33 @@ export default function InsumosHeader() {
                   {label}
                 </span>
               ))}
+              <div className="my-2 border-t border-insumos-line" />
+              {hasSession ? (
+                <Link
+                  href="/mi-cuenta"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-stone-700 hover:bg-insumos-cream"
+                >
+                  Mi cuenta
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/iniciar-sesion"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-stone-700 hover:bg-insumos-cream"
+                  >
+                    Iniciar sesión
+                  </Link>
+                  <Link
+                    href="/crear-cuenta"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-stone-700 hover:bg-insumos-cream"
+                  >
+                    Crear cuenta
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         )}

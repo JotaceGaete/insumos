@@ -13,5 +13,8 @@ export function isInsumosRoute(pathname: string): boolean {
   if (pathname.startsWith("/finalizar-compra")) return true;
   if (pathname.startsWith("/pedido/")) return true;
   if (pathname.startsWith("/pago/")) return true;
+  if (pathname.startsWith("/iniciar-sesion")) return true;
+  if (pathname.startsWith("/crear-cuenta")) return true;
+  if (pathname.startsWith("/mi-cuenta")) return true;
   return false;
 }
