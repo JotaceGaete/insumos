@@ -8,6 +8,7 @@ const links = [
   { href: '/admin/productos', label: 'Productos' },
   { href: '/admin/productos/nuevo', label: 'Nuevo producto' },
   { href: '/admin/categorias', label: 'Categorías' },
+  { href: '/admin/clientes', label: 'Clientes' },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
