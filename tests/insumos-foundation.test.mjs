@@ -32,6 +32,7 @@ const paymentPreferenceMigrationPath = new URL('supabase/migrations/202609011505
 const releasePaymentReservationMigrationPath = new URL('supabase/migrations/20260901154539_insumos_release_order_payment_reservation.sql', root);
 // Placeholder filename, not applied yet — same rename-after-apply pattern.
 const confirmOrderPaymentReferenceMigrationPath = new URL('supabase/migrations/20260901231742_insumos_confirm_order_payment_reference.sql', root);
+const customersMigrationPath = new URL('supabase/migrations/20260902170527_insumos_customers.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -2319,4 +2320,106 @@ test('payments Etapa 2A module (webhook verification, payment lookup, processing
   for (const source of files) {
     assert.doesNotMatch(source, legacyPattern);
   }
+});
+
+// ==========================================================================
+// Customer profile Etapa 2: customers master table + orders.buyer_id +
+// historical backfill + RLS. Structure only — no checkout integration, no
+// admin UI, no queries module yet.
+// ==========================================================================
+
+test('customers migration: table shape matches the approved design exactly (id, user_id, email_normalized, phone_normalized, rut_normalized, full_name, created_at, updated_at)', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  const createIndex = sql.indexOf('create unique index');
+  const createTableBlock = sql.slice(sql.indexOf('create table public.customers'), createIndex);
+  assert.match(createTableBlock, /id uuid primary key default gen_random_uuid\(\)/);
+  assert.match(createTableBlock, /user_id uuid references auth\.users\(id\) on delete set null/);
+  assert.match(createTableBlock, /email_normalized text not null/);
+  assert.match(createTableBlock, /phone_normalized text,/);
+  assert.match(createTableBlock, /rut_normalized text,/);
+  assert.match(createTableBlock, /full_name text,/);
+  assert.match(createTableBlock, /created_at timestamptz not null default now\(\)/);
+  assert.match(createTableBlock, /updated_at timestamptz not null default now\(\)/);
+});
+
+test('customers migration: UNIQUE index exists only on email_normalized — phone_normalized, rut_normalized and full_name are deliberately not unique', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  assert.match(sql, /create unique index customers_email_normalized_key on public\.customers\(email_normalized\);/);
+  const uniqueIndexCount = (sql.match(/create unique index/g) || []).length;
+  assert.strictEqual(uniqueIndexCount, 1, 'exactly one unique index — no accidental uniqueness on phone/rut/name');
+  assert.doesNotMatch(sql, /create unique index[^;]*phone_normalized/);
+  assert.doesNotMatch(sql, /create unique index[^;]*rut_normalized/);
+  assert.doesNotMatch(sql, /create unique index[^;]*full_name/);
+});
+
+test('customers migration: orders.buyer_id is a new nullable FK to customers(id) on delete set null — orders.customer_id (the legacy profiles FK) is never referenced, altered or dropped anywhere in this file', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  assert.match(sql, /alter table public\.orders add column buyer_id uuid references public\.customers\(id\) on delete set null;/);
+  // buyer_id must not be declared "not null" — nullable is required so
+  // existing/guest orders keep working with zero backfill dependency.
+  assert.doesNotMatch(sql, /buyer_id uuid[^,\n]*not null/);
+  // Strip SQL comments first — the migration's own doc comments legitimately
+  // mention "orders.customer_id" to explain why it's untouched, which would
+  // otherwise trip a naive substring check.
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /orders\.customer_id|customer_id uuid|drop column customer_id|alter column customer_id/);
+});
+
+test('customers migration: RLS enabled with the same admin/staff-only has_role() policy pattern orders already uses — no anon policy, no buyer-facing read policy', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  assert.match(sql, /alter table public\.customers enable row level security;/);
+  assert.match(sql, /create policy "catalog managers manage customers" on public\.customers for all\s*\n\s*using \(public\.has_role\('admin'\) or public\.has_role\('staff'\)\)\s*\n\s*with check \(public\.has_role\('admin'\) or public\.has_role\('staff'\)\);/);
+  // Exactly one policy — no separate "customers read own record" or
+  // anon/authenticated-facing policy has been added yet, matching the
+  // explicit "no buyer read policy yet" scope for this stage.
+  const policyCount = (sql.match(/create policy/g) || []).length;
+  assert.strictEqual(policyCount, 1);
+  assert.doesNotMatch(sql, /to anon|to authenticated|auth\.uid\(\) = /);
+});
+
+test('customers migration: updated_at reuses the existing public.set_updated_at() trigger function — no new/duplicated trigger mechanism defined', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  assert.match(sql, /create trigger customers_set_updated_at before update on public\.customers for each row execute function public\.set_updated_at\(\);/);
+  assert.doesNotMatch(sql, /create (or replace )?function public\.set_updated_at/);
+  assert.doesNotMatch(sql, /create function/i);
+});
+
+test('customers migration backfill: groups orders by lower(trim(customer_email)) — the same trim+lowercase normalizeEmail() already applies — so two orders sharing an email collapse into exactly one customers row', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  const insertBlock = sql.slice(sql.indexOf('insert into public.customers'), sql.indexOf('update public.orders'));
+  assert.match(insertBlock, /lower\(trim\(o\.customer_email\)\)/);
+  assert.match(insertBlock, /group by lower\(trim\(o\.customer_email\)\)/);
+  // created_at must be the first known purchase, never migration time.
+  assert.match(insertBlock, /min\(o\.created_at\) as created_at/);
+  assert.doesNotMatch(insertBlock, /created_at\) values\s*\([^)]*now\(\)/);
+});
+
+test('customers migration backfill: full_name/phone_normalized are each taken independently from the most recent order with a non-empty value for that specific field', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  const insertBlock = sql.slice(sql.indexOf('insert into public.customers'), sql.indexOf('update public.orders'));
+  assert.match(insertBlock, /array_agg\(o\.customer_name order by o\.created_at desc\) filter \(where coalesce\(trim\(o\.customer_name\), ''\) <> ''\)/);
+  assert.match(insertBlock, /array_agg\(o\.customer_phone order by o\.created_at desc\) filter \(where coalesce\(trim\(o\.customer_phone\), ''\) <> ''\)/);
+});
+
+test('customers migration backfill: is idempotent (ON CONFLICT on the unique email index, buyer_id UPDATE guarded by IS DISTINCT FROM) and never writes back to any orders snapshot column', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  assert.match(sql, /on conflict \(email_normalized\) do update set/);
+  assert.match(sql, /update public\.orders o\s*\nset buyer_id = c\.id/);
+  assert.match(sql, /and o\.buyer_id is distinct from c\.id/);
+  // The only "update public.orders" statement in the file must touch
+  // buyer_id alone — never customer_email/name/phone/shipping_address/billing_data.
+  // customer_email legitimately appears later in this same statement's WHERE
+  // clause (read-only, for the join condition) — so isolate just the SET
+  // clause itself (between "set" and "from") rather than the whole statement.
+  const ordersUpdateCount = (sql.match(/update public\.orders/g) || []).length;
+  assert.strictEqual(ordersUpdateCount, 1);
+  const setClauseStart = sql.indexOf('set buyer_id', sql.indexOf('update public.orders'));
+  const setClauseEnd = sql.indexOf('from public.customers', setClauseStart);
+  const setClause = sql.slice(setClauseStart, setClauseEnd);
+  assert.doesNotMatch(setClause, /customer_email|customer_name|customer_phone|shipping_address|billing_data/);
+});
+
+test('customers migration stays out of scope: no checkout RPCs, no Mercado Pago, no webhook, no reservations, no inventory/stock touched', async () => {
+  const sql = await readFile(customersMigrationPath, 'utf8');
+  assert.doesNotMatch(sql, /create_pending_order|confirm_order_paid|confirm_order_payment_reference|reserve_order_inventory|release_order_inventory|release_order_payment_reservation|inventory_movements|inventory_reservations|stock_quantity|mercadopago|payment_reference/i);
 });
