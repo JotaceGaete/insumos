@@ -1675,7 +1675,11 @@ test('getOrderEmailData builds its snapshot only from orders/order_items (never 
 });
 
 test('the checkout route fires order_received only after the order is already committed, and a notifyOrderReceived failure can never change the HTTP response', async () => {
-  const source = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  const rawSource = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  // Normalize CRLF -> LF first: the third indexOf() below searches for a
+  // literal embedded newline, which must not depend on which line-ending
+  // style the working tree happens to have this file checked out with.
+  const source = rawSource.replace(/\r\n/g, '\n');
   const createIndex = source.indexOf('const confirmation = await createPendingOrder(payload);');
   const notifyCallIndex = source.indexOf('await notifyOrderReceived(confirmation.orderId);');
   const responseIndex = source.indexOf('return NextResponse.json({\n      orderId: confirmation.orderId,');
