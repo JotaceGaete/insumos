@@ -252,10 +252,10 @@ export default function WholesalePublicView({
               Contactar Asesor
             </Link>
             <Link
-              href="mailto:mayoristas@artesellos.com"
+              href="mailto:mayoristas@artema.cl"
               className="border border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-indigo-600 transition-colors inline-block"
             >
-              mayoristas@artesellos.com
+              mayoristas@artema.cl
             </Link>
           </div>
         </div>

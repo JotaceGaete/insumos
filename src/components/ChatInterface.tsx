@@ -62,7 +62,7 @@ export default function ChatInterface() {
         setMessages([{
           id: Date.now().toString(),
           role: 'assistant',
-          content: '¡Hola! 👋 Soy el asistente de Artesellos. ¿En qué puedo ayudarte hoy? Puedo ayudarte con información sobre timbres, precios, disponibilidad y más.'
+          content: '¡Hola! 👋 Soy el asistente de ARTEMA. ¿En qué puedo ayudarte hoy? Puedo ayudarte con información sobre timbres, precios, disponibilidad y más.'
         }]);
       }, 500);
     }

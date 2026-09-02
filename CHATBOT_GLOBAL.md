@@ -144,7 +144,7 @@ const [messages, setMessages] = useState<Message[]>([
   {
     id: 'welcome',
     role: 'assistant',
-    content: '¡Hola! 👋 Soy el asistente de Artesellos. ¿En qué puedo ayudarte?'
+    content: '¡Hola! 👋 Soy el asistente de ARTEMA. ¿En qué puedo ayudarte?'
   }
 ]);
 ```

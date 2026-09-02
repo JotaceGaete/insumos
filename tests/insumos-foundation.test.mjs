@@ -193,7 +193,7 @@ test('hydrateCart rebuilds a valid cart from stored lines and silently drops cor
   assert.deepEqual(hydrateCart(null), EMPTY_CART);
 });
 
-test('insumos cart stays isolated from legacy Artesellos cart, checkout and wholesale modules', async () => {
+test('insumos cart stays isolated from legacy ARTEMA cart, checkout and wholesale modules', async () => {
   const files = await Promise.all([
     'src/features/cart/types.ts',
     'src/features/cart/cartReducer.ts',
@@ -409,14 +409,14 @@ test('all migrated public catalog routes stay within the insumos foundation', as
   assert.match(productDetail, /getProductMediaPublicUrl/);
 });
 
-test('the admin panel and its login gate render bare, without the legacy Artesellos chrome or the insumos storefront shell', async () => {
+test('the admin panel and its login gate render bare, without the legacy ARTEMA chrome or the insumos storefront shell', async () => {
   const clientProviders = await readFile(new URL('src/components/ClientProviders.tsx', root), 'utf8');
   assert.match(clientProviders, /function isAdminRoute\(pathname: string\)/);
   assert.match(clientProviders, /pathname\.startsWith\('\/admin'\)/);
   assert.match(clientProviders, /pathname\.startsWith\('\/acceso-admin'\)/);
   assert.match(clientProviders, /const shell = admin \? \(\s*<>\{children\}<\/>/);
   const adminShell = await readFile(new URL('src/features/admin/components/AdminShell.tsx', root), 'utf8');
-  assert.doesNotMatch(adminShell, /Artesellos|ChatInterface|FloatingWhatsApp/);
+  assert.doesNotMatch(adminShell, /ARTEMA|ChatInterface|FloatingWhatsApp/);
 });
 
 test('checkout rejects an empty cart and non-integer or zero/negative quantities', async () => {
@@ -602,7 +602,7 @@ test('the checkout migration history is preserved, not rewritten: the original a
   assert.ok('20260831195354' > '20260831194938');
 });
 
-test('checkout and order confirmation stay isolated from legacy Artesellos checkout, cart and payment modules', async () => {
+test('checkout and order confirmation stay isolated from legacy ARTEMA checkout, cart and payment modules', async () => {
   const files = await Promise.all([
     'src/features/checkout/types.ts',
     'src/features/checkout/validation.ts',
@@ -1129,7 +1129,7 @@ test('/finalizar-compra keeps billing address synced to shipping while "usar mis
   assert.match(page, /disabled=\{isShipping && form\.useSameAddressForBilling\}/);
 });
 
-test('checkout V2 modules (region/comuna, RUT, shipping policy) stay isolated from legacy Artesellos and never hardcode a payment/transport-carrier API endpoint', async () => {
+test('checkout V2 modules (region/comuna, RUT, shipping policy) stay isolated from legacy ARTEMA and never hardcode a payment/transport-carrier API endpoint', async () => {
   const files = await Promise.all([
     'src/features/checkout/regionComuna.ts',
     'src/features/checkout/rut.ts',
@@ -1508,7 +1508,7 @@ test('/pedido/[id]/confirmacion: shows "Retiro en tienda" for store_pickup order
   assert.match(page, /order\.shippingPolicy === 'pickup' \? 'Gratis \(retiro en tienda\)'/);
 });
 
-test('checkout V2.1 modules (name, email, phone) stay isolated from legacy Artesellos and never hardcode a payment/transport-carrier API endpoint', async () => {
+test('checkout V2.1 modules (name, email, phone) stay isolated from legacy ARTEMA and never hardcode a payment/transport-carrier API endpoint', async () => {
   const files = await Promise.all([
     'src/features/checkout/name.ts',
     'src/features/checkout/email.ts',
@@ -1675,7 +1675,11 @@ test('getOrderEmailData builds its snapshot only from orders/order_items (never 
 });
 
 test('the checkout route fires order_received only after the order is already committed, and a notifyOrderReceived failure can never change the HTTP response', async () => {
-  const source = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  const rawSource = await readFile(new URL('src/app/api/insumos/checkout/route.ts', root), 'utf8');
+  // Normalize CRLF -> LF first: the third indexOf() below searches for a
+  // literal embedded newline, which must not depend on which line-ending
+  // style the working tree happens to have this file checked out with.
+  const source = rawSource.replace(/\r\n/g, '\n');
   const createIndex = source.indexOf('const confirmation = await createPendingOrder(payload);');
   const notifyCallIndex = source.indexOf('await notifyOrderReceived(confirmation.orderId);');
   const responseIndex = source.indexOf('return NextResponse.json({\n      orderId: confirmation.orderId,');
@@ -1810,7 +1814,7 @@ test('email_deliveries migration stays out of scope: no ZeptoMail HTTP endpoints
   assert.doesNotMatch(sql, /calle |avenida |dirección de retiro/i);
 });
 
-test('email module (types, provider, mock/ZeptoMail providers, sendTransactionalEmail, orderEmailData, template) stays isolated from legacy Artesellos and never hardcodes a payment/transport-carrier/ZeptoMail endpoint', async () => {
+test('email module (types, provider, mock/ZeptoMail providers, sendTransactionalEmail, orderEmailData, template) stays isolated from legacy ARTEMA and never hardcodes a payment/transport-carrier/ZeptoMail endpoint', async () => {
   const files = await Promise.all([
     'src/features/email/types.ts',
     'src/features/email/provider.ts',
@@ -2001,7 +2005,7 @@ test('payment_preference_columns migration stays out of scope: no Mercado Pago H
   assert.doesNotMatch(sql, /https?:\/\//i);
 });
 
-test('payments module (types, provider, mock/MercadoPago providers, createPaymentPreference) stays isolated from legacy Artesellos — mercadopago itself is expected here, but not the legacy client/env/routes', async () => {
+test('payments module (types, provider, mock/MercadoPago providers, createPaymentPreference) stays isolated from legacy ARTEMA — mercadopago itself is expected here, but not the legacy client/env/routes', async () => {
   const files = await Promise.all([
     'src/features/payments/types.ts',
     'src/features/payments/provider.ts',
@@ -2225,7 +2229,7 @@ test('webhook route: confirmed/ignored/rejected all map to HTTP 200 (per Mercado
   assert.match(source, /return NextResponse\.json\(\{ status: outcome\.status, reason: outcome\.reason \}, \{ status: 200 \}\);/);
 });
 
-test('webhook route stays isolated from legacy Artesellos: no import from src/app/api/checkout/mp, no legacy Supabase client, no hardcoded transport/payment endpoints', async () => {
+test('webhook route stays isolated from legacy ARTEMA: no import from src/app/api/checkout/mp, no legacy Supabase client, no hardcoded transport/payment endpoints', async () => {
   const source = await readFile(new URL('src/app/api/insumos/payments/mercadopago/webhook/route.ts', root), 'utf8');
   // "checkout/mp" legitimately appears in this file's own doc comment
   // explaining that it does NOT touch that legacy path — only real imports
@@ -2312,7 +2316,7 @@ test('no code path lets the browser reach confirm_order_paid or confirm_order_pa
   }
 });
 
-test('payments Etapa 2A module (webhook verification, payment lookup, processing) stays isolated from legacy Artesellos', async () => {
+test('payments Etapa 2A module (webhook verification, payment lookup, processing) stays isolated from legacy ARTEMA', async () => {
   const files = await Promise.all([
     'src/features/payments/verifyMercadoPagoWebhook.ts',
     'src/features/payments/getMercadoPagoPayment.ts',
@@ -2507,7 +2511,7 @@ test('customers/server/queries.ts: every exported query requires admin/staff via
   assert.match(source, /import \{ requireCustomerManager \} from '@\/features\/auth\/server\/authorization';/);
 });
 
-test('customers/server/queries.ts and types.ts stay isolated from legacy Artesellos: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no woocommerce/cartContext, server-only', async () => {
+test('customers/server/queries.ts and types.ts stay isolated from legacy ARTEMA: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no woocommerce/cartContext, server-only', async () => {
   const [queriesSource, typesSource] = await Promise.all([
     readFile(new URL('src/features/customers/server/queries.ts', root), 'utf8'),
     readFile(new URL('src/features/customers/types.ts', root), 'utf8'),
@@ -2648,7 +2652,7 @@ test('customers admin components never send a mutating request and never import 
   assert.doesNotMatch(profileSource, mutationPattern);
 });
 
-test('customers admin UI stays isolated from legacy Artesellos: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no legacy ProductList/AdminShell chrome imports', async () => {
+test('customers admin UI stays isolated from legacy ARTEMA: no @/lib/supabase, no NEXT_PUBLIC_SUPABASE, no legacy ProductList/AdminShell chrome imports', async () => {
   const [listSource, profileSource, listRoute, detailRoute] = await Promise.all([
     readFile(new URL('src/features/admin/components/CustomerList.tsx', root), 'utf8'),
     readFile(new URL('src/features/admin/components/CustomerProfile.tsx', root), 'utf8'),
@@ -2940,7 +2944,7 @@ test('buyer routes are registered as INSUMOS routes (get the storefront header/f
   assert.doesNotMatch(codeOnly, /pathname\.startsWith\('\/iniciar-sesion'\)|pathname\.startsWith\('\/crear-cuenta'\)|pathname\.startsWith\('\/mi-cuenta'\)/);
 });
 
-test('LoginForm and SignupForm both use createInsumosSupabaseBrowser() — the INSUMOS-only browser client — never the legacy Artesellos @/lib/supabase client', async () => {
+test('LoginForm and SignupForm both use createInsumosSupabaseBrowser() — the INSUMOS-only browser client — never the legacy ARTEMA @/lib/supabase client', async () => {
   const [loginSrc, signupSrc] = await Promise.all([
     readFile(loginFormPath, 'utf8'),
     readFile(signupFormPath, 'utf8'),
@@ -3002,11 +3006,17 @@ test('/mi-cuenta/layout.tsx protects the route with requireBuyerAccount() and re
   assert.doesNotMatch(source, /requireCatalogManager|requireCustomerManager/);
 });
 
-test('/mi-cuenta page is a genuinely minimal MVP: renders account name/email and a sign-out control, with no KPI/order-history/order-detail/profile-editing UI (that belongs to 6E/6F)', async () => {
+// Superseded by Etapa 6E's tests below: /mi-cuenta now has real KPIs and
+// order history (AccountOverview + buyerQueries.ts), so "no KPI UI" is no
+// longer the right claim for this page. What's still true and still worth
+// guarding: the page composes requireBuyerAccount() + SignOutButton, and
+// order DETAIL/profile editing (6F) are still explicitly out of scope.
+test('/mi-cuenta page composes the guard + sign-out control, and still has no order-detail or profile-editing UI (6F territory)', async () => {
   const source = await readFile(miCuentaPagePath, 'utf8');
   assert.match(source, /requireBuyerAccount\(\)/);
   assert.match(source, /SignOutButton/);
-  assert.doesNotMatch(source, /totalOrders|totalSpent|averageOrderValue|listCustomerOrders|OrderStatusBadge/);
+  const codeOnly = source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(codeOnly, /pedidos\/\[id\]|EditProfile|<input|<form/i);
 });
 
 test('auth pages and components never mention admin/staff/catalog-manager language — the buyer experience stays fully separate from the admin one', async () => {
@@ -3019,7 +3029,7 @@ test('auth pages and components never mention admin/staff/catalog-manager langua
   }
 });
 
-test('/auth/callback uses createInsumosSupabaseServer() — the INSUMOS session-aware server client — never the legacy Artesellos client, and never service_role', async () => {
+test('/auth/callback uses createInsumosSupabaseServer() — the INSUMOS session-aware server client — never the legacy ARTEMA client, and never service_role', async () => {
   const source = await readFile(authCallbackRoutePath, 'utf8');
   assert.match(source, /import \{ createInsumosSupabaseServer \} from '@\/features\/shared\/server\/supabase';/);
   assert.doesNotMatch(source, /@\/lib\/supabase\b/);
@@ -3080,4 +3090,105 @@ test('Header shows session-aware buyer links ("Iniciar sesión"/"Crear cuenta" w
   assert.doesNotMatch(source, /Cuenta \(próximamente\)/);
   assert.match(source, /href=\{hasSession \? '\/mi-cuenta' : '\/iniciar-sesion'\}/);
   assert.match(source, /href="\/crear-cuenta"/);
+});
+
+// ==========================================================================
+// Customer profile Etapa 6E: /mi-cuenta MVP — account data, KPIs (Etapa 3
+// semantics reused, not reinvented) and full order history. Read-only,
+// authorized entirely by Etapa 6C's RLS via the session-aware server
+// client — never service_role, never requireCustomerManager(). Order
+// detail, profile editing and authenticated checkout stay out of scope
+// (6F/6G).
+// ==========================================================================
+
+const buyerQueriesPath = new URL('src/features/customers/server/buyerQueries.ts', root);
+const orderLabelsPath = new URL('src/features/customers/orderLabels.ts', root);
+const accountOverviewPath = new URL('src/features/customers/components/AccountOverview.tsx', root);
+const adminQueriesPath = new URL('src/features/customers/server/queries.ts', root);
+
+test('buyerQueries.ts uses createInsumosSupabaseServer() (session-aware) exclusively — never createInsumosSupabaseAdmin/service_role, never requireCustomerManager()', async () => {
+  const source = await readFile(buyerQueriesPath, 'utf8');
+  assert.match(source, /import \{ createInsumosSupabaseServer \} from '@\/features\/shared\/server\/supabase';/);
+  const codeOnly = source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(codeOnly, /createInsumosSupabaseAdmin|service_role|requireCustomerManager|requireCatalogManager/);
+});
+
+test('getMyCommercialSummary() reuses the exact same COMMERCIAL_ORDER_STATUSES = [\'paid\', \'fulfilled\'] semantics as the Etapa 3 admin query — not a new/different metric definition', async () => {
+  const [buyerSource, adminSource] = await Promise.all([
+    readFile(buyerQueriesPath, 'utf8'),
+    readFile(adminQueriesPath, 'utf8'),
+  ]);
+  const buyerConst = buyerSource.match(/const COMMERCIAL_ORDER_STATUSES = (\[.*?\]) as const;/)?.[1];
+  const adminConst = adminSource.match(/const COMMERCIAL_ORDER_STATUSES = (\[.*?\]) as const;/)?.[1];
+  assert.ok(buyerConst && adminConst, 'both files must define COMMERCIAL_ORDER_STATUSES');
+  assert.strictEqual(buyerConst, adminConst);
+  assert.match(buyerSource, /\.in\('status', \[\.\.\.COMMERCIAL_ORDER_STATUSES\]\)/);
+});
+
+test('listMyOrders() is unfiltered by status (every order, including cancelled/pending) — cancelled orders must appear in history even though they never count toward the KPI summary', async () => {
+  const source = await readFile(buyerQueriesPath, 'utf8');
+  const fnStart = source.indexOf('export async function listMyOrders');
+  const fnBody = source.slice(fnStart, source.indexOf('\n}', fnStart));
+  assert.doesNotMatch(fnBody, /\.in\('status'|COMMERCIAL_ORDER_STATUSES/);
+  assert.match(fnBody, /\.order\('created_at', \{ ascending: false \}\)/);
+});
+
+test('both buyer queries filter by buyer_id = customerId for correctness, but that filter is not the security boundary — RLS is (no admin bypass, no service_role anywhere in this file)', async () => {
+  const source = await readFile(buyerQueriesPath, 'utf8');
+  const eqCalls = (source.match(/\.eq\('buyer_id', customerId\)/g) || []).length;
+  assert.strictEqual(eqCalls, 2, 'both getMyCommercialSummary and listMyOrders filter by buyer_id');
+});
+
+test('orderLabels.ts translations match the live orders table CHECK constraints confirmed in the Etapa 6E audit — status/payment_status/delivery_method/billing_document_type values are never guessed', async () => {
+  const source = await readFile(orderLabelsPath, 'utf8');
+  for (const status of ['pending', 'awaiting_payment', 'paid', 'fulfilled', 'cancelled']) {
+    assert.match(source, new RegExp(`ORDER_STATUS_LABELS[\\s\\S]*?${status}: '[^']+',`));
+  }
+  for (const status of ['pending', 'approved', 'rejected', 'cancelled', 'refunded']) {
+    assert.match(source, new RegExp(`PAYMENT_STATUS_LABELS[\\s\\S]*?${status}: '[^']+',`));
+  }
+  assert.match(source, /shipping: 'Despacho',/);
+  assert.match(source, /store_pickup: 'Retiro en tienda',/);
+});
+
+test('AccountOverview renders nombre/email/teléfono, the three approved KPIs only (Compras/Total gastado/Última compra — no invented metric), and a friendly empty state with a CTA when there are no orders', async () => {
+  const source = await readFile(accountOverviewPath, 'utf8');
+  assert.match(source, /account\.displayName \|\| '—'/);
+  assert.match(source, /account\.email/);
+  assert.match(source, /account\.phoneNormalized \|\| '—'/);
+  assert.match(source, /summary\.totalOrders/);
+  assert.match(source, /summary\.totalSpent/);
+  assert.match(source, /summary\.lastOrderAt/);
+  // No extra KPI beyond the three approved ones.
+  assert.doesNotMatch(source, /averageOrderValue|firstOrderAt/);
+  assert.match(source, /Todavía no tienes pedidos\./);
+  assert.match(source, /href="\/productos"/);
+});
+
+test('AccountOverview is responsive the same way the admin customer profile already is: a table hidden below md, and a card list hidden at md and up — no horizontally-forced table on mobile', async () => {
+  const source = await readFile(accountOverviewPath, 'utf8');
+  assert.match(source, /hidden overflow-x-auto rounded-lg border border-stone-200 bg-white md:block/);
+  assert.match(source, /<ul className="mt-3 space-y-3 md:hidden">/);
+});
+
+test('/mi-cuenta page composes requireBuyerAccount() + the two buyer queries only — no admin query module, no createInsumosSupabaseAdmin, no requireCustomerManager anywhere in the page or its component', async () => {
+  const [pageSource, componentSource] = await Promise.all([
+    readFile(new URL('src/app/mi-cuenta/page.tsx', root), 'utf8'),
+    readFile(accountOverviewPath, 'utf8'),
+  ]);
+  for (const source of [pageSource, componentSource]) {
+    const codeOnly = source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.doesNotMatch(codeOnly, /createInsumosSupabaseAdmin|service_role|requireCustomerManager|requireCatalogManager|customers\/server\/queries/);
+  }
+  assert.match(pageSource, /getMyCommercialSummary\(account\.customerId\)/);
+  assert.match(pageSource, /listMyOrders\(account\.customerId\)/);
+});
+
+test('displayName full_name fallback (Etapa 6D debt) is read-only: resolveMetadataDisplayName never writes to customers — no .update()/.upsert()/.insert() call in authorization.ts targets the customers table', async () => {
+  const source = await readFile(authorizationPath, 'utf8');
+  assert.match(source, /function resolveMetadataDisplayName/);
+  assert.doesNotMatch(source, /\.from\('customers'\)\s*\.(update|upsert|insert)\(/);
+  // The raw commercial value and the display fallback are kept distinct —
+  // fullName is never overwritten by the metadata fallback.
+  assert.match(source, /displayName: fullName \?\? resolveMetadataDisplayName\(user\.user_metadata\)/);
 });

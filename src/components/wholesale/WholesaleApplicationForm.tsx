@@ -176,7 +176,7 @@ export default function WholesaleApplicationForm({ onCancel }: WholesaleApplicat
             <p className="mb-3">
               Recibimos tu solicitud <strong>#{success.requestId}</strong>. 
               Tus archivos están listos para revisión. Si necesitás agregar info, 
-              escribinos a <strong>mayoristas@artesellos.cl</strong> citando este ID.
+              escribinos a <strong>mayoristas@artema.cl</strong> citando este ID.
             </p>
             <p className="text-sm mb-3">
               Las respuestas llegan a nuestro buzón verificado. Si adjuntaste archivos, 

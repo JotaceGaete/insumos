@@ -1,4 +1,4 @@
-# Artesellos - Tienda Online de Timbres Personalizados
+# ARTEMA - Tienda Online de Timbres Personalizados
 
 Una tienda online moderna y responsiva para timbres personalizados, construida con Next.js 14, App Router y TailwindCSS.
 
@@ -179,4 +179,4 @@ Para preguntas o soporte técnico, contacta al equipo de desarrollo.
 
 ---
 
-¡Gracias por elegir Artesellos para tu tienda de timbres personalizados! 🎨✨
+¡Gracias por elegir ARTEMA para tu tienda de timbres personalizados! 🎨✨

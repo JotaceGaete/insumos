@@ -19,7 +19,7 @@ export default function ChatBot({ product }: ChatBotProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: '¡Hola! 👋 Soy tu asistente virtual de Artesellos. Estoy aquí para ayudarte con información sobre nuestros timbres, medios de pago, envíos y más. ¿En qué puedo ayudarte?',
+      text: '¡Hola! 👋 Soy tu asistente virtual de ARTEMA. Estoy aquí para ayudarte con información sobre nuestros timbres, medios de pago, envíos y más. ¿En qué puedo ayudarte?',
       isUser: false,
       timestamp: new Date()
     }
@@ -163,7 +163,7 @@ export default function ChatBot({ product }: ChatBotProps) {
           <div className="bg-blue-600 text-white p-4 rounded-t-lg flex justify-between items-center">
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-green-400 rounded-full"></div>
-              <h3 className="font-semibold">Asistente Artesellos</h3>
+              <h3 className="font-semibold">Asistente ARTEMA</h3>
             </div>
             <button
               onClick={() => setIsOpen(false)}

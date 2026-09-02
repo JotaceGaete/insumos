@@ -10,8 +10,8 @@ function resolveAssetUrl(raw?: string): string {
   if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/')) {
     return value;
   }
-  // Base por defecto: artesellos.cl si no hay env definida
-  const base = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || 'https://artesellos.cl').replace(/\/+$/, '');
+  // Base por defecto: artema.cl si no hay env definida
+  const base = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || 'https://artema.cl').replace(/\/+$/, '');
   if (!base) return placeholder;
   let key = value.replace(/^\/+/, '');
   // Si el key incluye el nombre del bucket (e.g., "timbres/archivo.jpg") y el dominio

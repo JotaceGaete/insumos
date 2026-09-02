@@ -123,7 +123,7 @@ export default function BlogComoHacerTimbreEmpresaPage() {
       <p>
         Cotiza con plazos realistas y preguntas directas sobre grabado, montaje y despacho. Un
         proveedor transparente explica limitaciones de tamaño, tipo de goma y opciones de tinta.
-        Pide fotos de trabajos similares si no tienes referencias propias. En Artesellos fabricamos
+        Pide fotos de trabajos similares si no tienes referencias propias. En ARTEMA fabricamos
         timbres de goma con foco en nitidez y durabilidad, asesorando desde el primer mensaje para
         que el resultado sea útil en tu operación diaria.
       </p>

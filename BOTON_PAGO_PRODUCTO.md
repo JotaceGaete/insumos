@@ -2,7 +2,7 @@
 
 ## 🎯 Objetivo
 
-Implementar un botón de pago directo en la página de producto que funcione igual que el chatbot, redirigiendo a https://artesellos.cl/pagar con todos los parámetros necesarios.
+Implementar un botón de pago directo en la página de producto que funcione igual que el chatbot, redirigiendo a https://artema.cl/pagar con todos los parámetros necesarios.
 
 ---
 
@@ -315,7 +315,7 @@ Sistema: Redirige a /pagar?monto=25500&detalle=1_x_Producto...
 
 ## 🔗 Integración con Página de Pago
 
-La página de pago (https://artesellos.cl/pagar) recibe:
+La página de pago (https://artema.cl/pagar) recibe:
 
 ```typescript
 const searchParams = useSearchParams();

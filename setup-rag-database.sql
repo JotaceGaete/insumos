@@ -90,7 +90,7 @@ CREATE TRIGGER update_knowledge_base_updated_at
 -- Ejemplo de estructura para insertar (desde tu aplicación):
 -- INSERT INTO knowledge_base (content, embedding)
 -- VALUES (
---   'Artesellos es una tienda especializada en timbres personalizados ubicada en el centro de Santiago, Providencia.',
+--   'ARTEMA es una tienda especializada en timbres personalizados ubicada en el centro de Santiago, Providencia.',
 --   '[array de 1536 números generado por OpenAI]'
 -- );
 

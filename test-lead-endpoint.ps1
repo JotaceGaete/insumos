@@ -13,7 +13,7 @@ Write-Host "📧 Test 1: Email válido" -ForegroundColor Yellow
 Write-Host "────────────────────────────────────────────────────────" -ForegroundColor Gray
 
 $body1 = @{
-    email = "test@artesellos.cl"
+    email = "test@artema.cl"
 } | ConvertTo-Json
 
 try {

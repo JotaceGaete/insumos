@@ -1,7 +1,7 @@
 export const carouselSlides = [
   {
     id: 1,
-    title: "Artesellos",
+    title: "ARTEMA",
     subtitle: "Timbres Personalizados",
     description: "Crea recuerdos únicos con nuestros diseños exclusivos. Calidad profesional para todas tus ocasiones especiales.",
     buttonText: "Explorar Productos",

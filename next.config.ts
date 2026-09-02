@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   images: {
     domains: [
-      'artesellos.cl',
+      'artema.cl',
       'media.artesellos.cl',
       'i.postimg.cc',
       'ueannxyewstuptivnzjf.supabase.co',
@@ -49,7 +49,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'artesellos.cl',
+        hostname: 'artema.cl',
         port: '',
         pathname: '/**',
       },

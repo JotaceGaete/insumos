@@ -340,7 +340,7 @@ Total: ${formatPrice(totalPrice)}
           {/* Bloque Destacado de Tecnología */}
           <div className="bg-indigo-50 rounded-lg p-6 md:p-8 mb-8 border border-indigo-100">
             <h3 className="text-xl font-bold text-indigo-900 mb-4">
-              Tecnología de Grabado Láser Artesellos: Precisión que se Nota
+              Tecnología de Grabado Láser ARTEMA: Precisión que se Nota
             </h3>
             <p className="text-gray-700 leading-relaxed">
               Utilizamos tecnología láser de última generación para asegurar un alto relieve en la goma, garantizando una impresión totalmente nítida y limpia sin borrones.
@@ -349,7 +349,7 @@ Total: ${formatPrice(totalPrice)}
 
           {/* Lista de Beneficios Clave */}
           <div className="mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Beneficios de Artesellos</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Beneficios de ARTEMA</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Punto 1: Diseño */}
               <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all">

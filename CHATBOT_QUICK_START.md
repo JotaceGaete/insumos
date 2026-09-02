@@ -61,7 +61,7 @@ Al hacer clic:
 │  [Navbar]                               │
 │                                         │
 │                    ┌──────────────────┐ │
-│  Contenido         │ 🤖 Artesellos Bot│ │
+│  Contenido         │ 🤖 ARTEMA Bot│ │
 │                    ├──────────────────┤ │
 │                    │                  │ │
 │                    │ [Mensajes aquí]  │ │
@@ -181,7 +181,7 @@ Verifica que todo funcione:
 
 - [ ] Botón 💬 visible en la esquina
 - [ ] Click abre el widget
-- [ ] Widget tiene header con "Artesellos Bot v2"
+- [ ] Widget tiene header con "ARTEMA Bot v2"
 - [ ] Puedes escribir mensajes
 - [ ] Respuestas aparecen en tiempo real
 - [ ] Imágenes de productos se cargan

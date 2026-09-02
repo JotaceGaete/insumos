@@ -17,9 +17,10 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  applicationName: "ARTEMA",
   title: {
-    default: "ArteInsumos | Materias primas para crear",
-    template: "%s | ArteInsumos",
+    default: "ARTEMA | Materias primas para crear",
+    template: "%s | ARTEMA",
   },
   description:
     "Insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
@@ -29,22 +30,29 @@ export const metadata: Metadata = {
     "materias primas",
     "packaging",
   ],
-  authors: [{ name: "ArteInsumos" }],
+  authors: [{ name: "ARTEMA" }],
   robots: {
     index: true,
     follow: true,
   },
   icons: {
-    icon: "/favicon-insumos.svg",
-    shortcut: "/favicon-insumos.svg",
+    icon: "/favicon-artema.svg",
+    shortcut: "/favicon-artema.svg",
   },
   openGraph: {
-    title: "ArteInsumos | Materias primas para crear",
+    title: "ARTEMA | Materias primas para crear",
     description:
       "Insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
     type: "website",
     url: SITE_URL,
+    siteName: "ARTEMA",
     locale: "es_CL",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ARTEMA | Materias primas para crear",
+    description:
+      "Insumos y materias primas para velas, jabones, perfumería, cosmética y packaging.",
   },
 };
 

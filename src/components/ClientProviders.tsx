@@ -17,7 +17,7 @@ import { CartDrawer } from '@/features/cart/CartDrawer';
 
 // The admin panel (AdminShell) and its login gate (AdminLogin) render their
 // own complete page chrome. They must never inherit the customer-facing
-// Artesellos navbar/topbar/chatbot/WhatsApp or the INSUMOS storefront shell —
+// ARTEMA navbar/topbar/chatbot/WhatsApp or the INSUMOS storefront shell —
 // admin gets bare children, full stop.
 function isAdminRoute(pathname: string) {
   return pathname.startsWith('/admin') || pathname.startsWith('/acceso-admin');
@@ -61,7 +61,7 @@ export default function ClientProviders({ children }: { children: React.ReactNod
     <CartProvider>
       <FavoritesProvider>
         {insumos ? (
-          // Cart lives only on the INSUMOS side of the tree — legacy Artesellos
+          // Cart lives only on the INSUMOS side of the tree — legacy ARTEMA
           // keeps its own CartProvider above, untouched.
           <InsumosCartProvider>
             {shell}

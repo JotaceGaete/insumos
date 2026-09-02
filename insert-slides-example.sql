@@ -18,7 +18,7 @@ INSERT INTO public.slider_slides (
   active
 ) VALUES 
 (
-  'Artesellos',
+  'ARTEMA',
   'Timbres Personalizados Premium',
   'Crea recuerdos únicos con nuestros diseños exclusivos. Calidad profesional para todas tus ocasiones especiales.',
   'Explorar Productos',

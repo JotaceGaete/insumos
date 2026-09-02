@@ -20,7 +20,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const EMBEDDING_MODEL = 'text-embedding-3-small'; // Modelo eficiente para embeddings
 
-// --- 2. Base de Conocimiento de Artesellos (Texto) ---
+// --- 2. Base de Conocimiento de ARTEMA (Texto) ---
 // Dividimos la información en bloques lógicos para mejorar la calidad del RAG.
 const knowledgeChunks = [
     // Timbres de escritorio y portátiles

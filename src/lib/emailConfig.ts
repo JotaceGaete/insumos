@@ -5,9 +5,9 @@
 
 export const EMAIL_CONFIG = {
   MODE: (process.env.EMAIL_MODE || 'receive_only') as 'receive_only' | 'active',
-  SUPPORT: process.env.EMAIL_SUPPORT || 'soporte@artesellos.cl',
-  WHOLESALE: process.env.EMAIL_WHOLESALE || 'mayoristas@artesellos.cl',
-  FROM: process.env.EMAIL_FROM || 'noreply@artesellos.cl',
+  SUPPORT: process.env.EMAIL_SUPPORT || 'soporte@artema.cl',
+  WHOLESALE: process.env.EMAIL_WHOLESALE || 'mayoristas@artema.cl',
+  FROM: process.env.EMAIL_FROM || 'noreply@artema.cl',
 } as const;
 
 /**

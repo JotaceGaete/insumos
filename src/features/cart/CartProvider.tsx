@@ -13,7 +13,7 @@ import {
 } from './cartReducer';
 import type { CartLine, InsumosCart } from './types';
 
-// Own key, independent from any Artesellos storage — never read/write theirs.
+// Own key, independent from any ARTEMA storage — never read/write theirs.
 const CART_STORAGE_KEY = 'arteinsumos.cart.v1';
 
 interface InsumosCartContextValue {

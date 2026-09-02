@@ -91,12 +91,12 @@ const datosBancarios = {
   tipoCuenta: 'Cuenta Corriente',
   numeroCuenta: '123456789',
   rut: '12.345.678-9',
-  titular: 'Artesellos SpA',
-  email: 'pagos@artesellos.cl'
+  titular: 'ARTEMA SpA',
+  email: 'pagos@artema.cl'
 };
 ```
 
-**IMPORTANTE**: ⚠️ Actualiza estos datos con los reales de Artesellos.
+**IMPORTANTE**: ⚠️ Actualiza estos datos con los reales de ARTEMA.
 
 ### Tarjeta de Datos
 ```tsx
@@ -132,8 +132,8 @@ Banco: Banco Estado
 Tipo: Cuenta Corriente
 N° Cuenta: 123456789
 RUT: 12.345.678-9
-Titular: Artesellos SpA
-Email: pagos@artesellos.cl
+Titular: ARTEMA SpA
+Email: pagos@artema.cl
 Monto: $75.000
 ```
 
@@ -409,8 +409,8 @@ const datosBancarios = {
   tipoCuenta: 'Cuenta Corriente',  // ← Cambiar
   numeroCuenta: '123456789',       // ← Cambiar
   rut: '12.345.678-9',             // ← Cambiar
-  titular: 'Artesellos SpA',       // ← Cambiar
-  email: 'pagos@artesellos.cl'    // ← Cambiar
+  titular: 'ARTEMA SpA',       // ← Cambiar
+  email: 'pagos@artema.cl'    // ← Cambiar
 };
 ```
 

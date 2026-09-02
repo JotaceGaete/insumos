@@ -11,7 +11,7 @@ export default function InsumosFooter() {
               <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white">
                 <Leaf className="h-4 w-4" aria-hidden />
               </span>
-              <h2 className="text-xl font-extrabold tracking-tight text-white">ArteInsumos</h2>
+              <h2 className="text-xl font-extrabold tracking-tight text-white">ARTEMA</h2>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-white/60">
               Materias primas para velas, jabones, perfumería, cosmética y packaging.
@@ -37,7 +37,7 @@ export default function InsumosFooter() {
         </div>
 
         <div className="mt-8 border-t border-white/10 pt-6 text-center">
-          <p className="text-sm text-white/50">© {new Date().getFullYear()} ArteInsumos. Todos los derechos reservados.</p>
+          <p className="text-sm text-white/50">© {new Date().getFullYear()} ARTEMA. Todos los derechos reservados.</p>
         </div>
       </div>
     </footer>

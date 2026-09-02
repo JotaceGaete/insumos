@@ -13,7 +13,7 @@
   <!-- Borde -->
   <circle cx="50" cy="50" r="45" class="stamp-border"/>
 
-  <!-- Texto "A" para Artesellos -->
+  <!-- Texto "A" para ARTEMA -->
   <text x="50" y="65" text-anchor="middle" class="stamp-text">A</text>
 
   <!-- Pequeño sello decorativo -->

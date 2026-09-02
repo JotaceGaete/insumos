@@ -83,7 +83,7 @@ export default function InsumosHeader() {
               <Leaf className="h-5 w-5" aria-hidden />
             </span>
             <span className="hidden flex-col leading-none sm:flex">
-              <span className="text-lg font-extrabold tracking-tight text-insumos-forest">ArteInsumos</span>
+              <span className="text-lg font-extrabold tracking-tight text-insumos-forest">ARTEMA</span>
               <span className="mt-1 text-[11px] text-stone-500">Materias primas para crear</span>
             </span>
           </Link>

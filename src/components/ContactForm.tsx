@@ -63,7 +63,7 @@ export default function ContactForm() {
             <p className="mb-3">
               Tu mensaje quedó registrado con el ID <strong>#{success.contactId}</strong>. 
               Si querés acelerar la respuesta, escribinos a{' '}
-              <strong>soporte@artesellos.cl</strong> citando este ID.
+              <strong>soporte@artema.cl</strong> citando este ID.
             </p>
           </div>
 
@@ -194,10 +194,10 @@ export default function ContactForm() {
           <p>
             * Campos obligatorios. También podés escribirnos directamente a{' '}
             <a
-              href="mailto:soporte@artesellos.cl"
+              href="mailto:soporte@artema.cl"
               className="text-indigo-600 hover:text-indigo-500 font-medium"
             >
-              soporte@artesellos.cl
+              soporte@artema.cl
             </a>
           </p>
         </div>

@@ -1,4 +1,4 @@
-# 🚀 Guía de Configuración de Supabase para Artesellos App
+# 🚀 Guía de Configuración de Supabase para ARTEMA App
 
 Esta guía te ayudará a configurar Supabase para conectar tu aplicación de e-commerce de timbres personalizados.
 
@@ -201,4 +201,4 @@ Una vez configurado Supabase, podrás:
 
 ---
 
-¡Tu aplicación Artesellos ya está conectada con Supabase! 🎉
+¡Tu aplicación ARTEMA ya está conectada con Supabase! 🎉

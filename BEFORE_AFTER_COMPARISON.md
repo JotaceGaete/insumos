@@ -5,7 +5,7 @@
 ### ANTES 👎
 ```
 ┌────────────────────────────────────────────────────────┐
-│ [A] Artesellos  Inicio Productos Contacto             │
+│ [A] ARTEMA  Inicio Productos Contacto             │
 │     Timbres     [_____________ Buscar 🔍] 🛒 [Login]  │
 └────────────────────────────────────────────────────────┘
 • Altura: 56px (h-14)
@@ -20,7 +20,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
 │  [LOGO]                Inicio  Productos  Contacto   🔍 🛒 [Iniciar Sesión]  │
-│  Artesellos                                                 │
+│  ARTEMA                                                 │
 │  TIMBRES PERSONALIZADOS                                     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -42,7 +42,7 @@
 <div className="w-7 h-7 rounded-full bg-gray-900">
   <span>A</span>
 </div>
-<span className="text-xl font-bold">Artesellos</span>
+<span className="text-xl font-bold">ARTEMA</span>
 ```
 - Tamaño: 28x28px (pequeño)
 - Sin imagen real
@@ -56,7 +56,7 @@
   height={40}
 />
 <div className="flex flex-col">
-  <span className="text-lg font-bold tracking-tight">Artesellos</span>
+  <span className="text-lg font-bold tracking-tight">ARTEMA</span>
   <span className="text-[10px] uppercase tracking-wider">TIMBRES PERSONALIZADOS</span>
 </div>
 ```

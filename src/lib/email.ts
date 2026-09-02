@@ -34,7 +34,7 @@ export const emailTemplates = {
           </div>
         </div>
         <p style="color: #6b7280; font-size: 14px;">
-          Este mensaje fue enviado desde el formulario de contacto de Artesellos.
+          Este mensaje fue enviado desde el formulario de contacto de ARTEMA.
         </p>
       </div>
     `,
@@ -66,7 +66,7 @@ export const emailTemplates = {
           ${data.reference_image ? `<p><strong>Imagen de referencia:</strong> <a href="${data.reference_image}" target="_blank">Ver imagen</a></p>` : ''}
         </div>
         <p style="color: #6b7280; font-size: 14px;">
-          Este mensaje fue enviado desde el formulario de cotizaciones de Artesellos.
+          Este mensaje fue enviado desde el formulario de cotizaciones de ARTEMA.
         </p>
       </div>
     `,
@@ -103,7 +103,7 @@ export const emailTemplates = {
           </div>
         </div>
         <p style="color: #6b7280; font-size: 14px;">
-          Este mensaje fue enviado desde el formulario de registro mayorista de Artesellos.
+          Este mensaje fue enviado desde el formulario de registro mayorista de ARTEMA.
         </p>
       </div>
     `,

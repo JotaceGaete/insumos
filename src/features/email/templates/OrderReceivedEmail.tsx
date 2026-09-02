@@ -57,7 +57,7 @@ function deliverySummary(data: OrderEmailData): { deliveryLabel: string; shippin
 
 export function renderOrderReceivedEmail(data: OrderEmailData): RenderedEmail {
   const orderCode = shortOrderId(data.orderId);
-  const subject = `ArteInsumos — Recibimos tu pedido #${orderCode}`;
+  const subject = `ARTEMA — Recibimos tu pedido #${orderCode}`;
   const documentLabel = data.billingDocumentType === 'factura' ? 'Factura' : 'Boleta';
   const { deliveryLabel, shippingLine, shippingNote } = deliverySummary(data);
   const carrierLabel = data.preferredCarrier ? CARRIER_LABELS[data.preferredCarrier] || data.preferredCarrier : null;
@@ -80,7 +80,7 @@ export function renderOrderReceivedEmail(data: OrderEmailData): RenderedEmail {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#ffffff;border:1px solid #e5e1d8;border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:24px 24px 8px 24px;">
-                <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#3f6b4f;">ArteInsumos</p>
+                <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#3f6b4f;">ARTEMA</p>
                 <h1 style="margin:8px 0 0 0;font-size:22px;color:#1c1b17;">Recibimos tu pedido</h1>
               </td>
             </tr>
@@ -144,7 +144,7 @@ export function renderOrderReceivedEmail(data: OrderEmailData): RenderedEmail {
 </html>`;
 
   const textLines = [
-    'ArteInsumos — Recibimos tu pedido',
+    'ARTEMA — Recibimos tu pedido',
     '',
     `Hola ${data.customerName},`,
     'Gracias por tu compra. Este es un resumen de tu pedido.',

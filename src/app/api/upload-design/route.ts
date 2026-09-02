@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
 
     // Preparar el contenido del email
     const mailOptions = {
-      from: `"Artesellos Web" <${process.env.SMTP_USER}>`,
-      to: 'contacto@artesellos.cl',
+      from: `"ARTEMA Web" <${process.env.SMTP_USER}>`,
+      to: 'contacto@artema.cl',
       subject: `Nueva Solicitud de Diseño Personalizado - ${nombre}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
           </div>
 
           <p style="color: #6B7280; font-size: 14px; margin-top: 30px;">
-            Este correo fue enviado desde el formulario de diseño personalizado de Artesellos.
+            Este correo fue enviado desde el formulario de diseño personalizado de ARTEMA.
           </p>
         </div>
       `,

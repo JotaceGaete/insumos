@@ -1,4 +1,4 @@
--- Script de configuración inicial de Supabase para Artesellos App
+-- Script de configuración inicial de Supabase para ARTEMA App
 -- Ejecutar este script en el SQL Editor de Supabase
 
 -- =====================================================

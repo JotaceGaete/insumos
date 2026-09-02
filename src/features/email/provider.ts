@@ -30,7 +30,7 @@ export function getEmailProvider(): EmailProvider {
 
 export function getEmailFrom(): { email: string; name: string } {
   return {
-    email: process.env.INSUMOS_EMAIL_FROM || 'no-reply@arteinsumos.local',
-    name: process.env.INSUMOS_EMAIL_FROM_NAME || 'ArteInsumos',
+    email: process.env.INSUMOS_EMAIL_FROM || 'no-reply@artema.cl',
+    name: process.env.INSUMOS_EMAIL_FROM_NAME || 'ARTEMA',
   };
 }

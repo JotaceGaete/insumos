@@ -52,9 +52,9 @@ SUPABASE_SERVICE_ROLE_KEY=tu-service-role-key-aqui
 # Otras variables que puedas necesitar
 SMTP_HOST=smtp.zoho.com
 SMTP_PORT=465
-SMTP_USER=contacto@artesellos.cl
+SMTP_USER=contacto@artema.cl
 SMTP_PASSWORD=tu-password-aqui
-CONTACT_MAIL_TO=contacto@artesellos.cl
+CONTACT_MAIL_TO=contacto@artema.cl
 ```
 
 ### Paso 3: Guardar y reiniciar
@@ -153,9 +153,9 @@ module.exports = {
       SUPABASE_SERVICE_ROLE_KEY: 'tu-service-role-key-aqui',
       SMTP_HOST: 'smtp.zoho.com',
       SMTP_PORT: '465',
-      SMTP_USER: 'contacto@artesellos.cl',
+      SMTP_USER: 'contacto@artema.cl',
       SMTP_PASSWORD: 'tu-password-aqui',
-      CONTACT_MAIL_TO: 'contacto@artesellos.cl'
+      CONTACT_MAIL_TO: 'contacto@artema.cl'
     }
   }]
 };

@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Cliente OpenAI: construido aquí (no a nivel de módulo) para que la
-    // ausencia de OPENAI_API_KEY en un ambiente distinto a Artesellos no
+    // ausencia de OPENAI_API_KEY en un ambiente distinto a ARTEMA no
     // rompa `next build` — solo falla si este endpoint se invoca.
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,

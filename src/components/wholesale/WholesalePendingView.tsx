@@ -205,11 +205,11 @@ export default function WholesalePendingView({ account }: WholesalePendingViewPr
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="mailto:mayoristas@artesellos.com"
+              href="mailto:mayoristas@artema.cl"
               className="inline-flex items-center justify-center px-6 py-3 border border-indigo-600 text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
             >
               <Mail className="w-5 h-5 mr-2" />
-              mayoristas@artesellos.com
+              mayoristas@artema.cl
             </a>
             <a
               href="tel:+56912345678"

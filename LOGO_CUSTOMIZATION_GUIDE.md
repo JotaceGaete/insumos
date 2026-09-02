@@ -13,7 +13,7 @@
 <div className="relative w-10 h-10 flex-shrink-0">
   <Image 
     src="/logo.svg" 
-    alt="Artesellos Logo" 
+    alt="ARTEMA Logo"
     width={40}
     height={40}
     className="object-contain drop-shadow-sm"
@@ -36,7 +36,7 @@
 <div className="relative w-10 h-10 flex-shrink-0">
   <Image 
     src="/logo.png"  // ← Cambia a .png o .jpg
-    alt="Artesellos Logo" 
+    alt="ARTEMA Logo"
     width={40}
     height={40}
     className="object-contain drop-shadow-sm"
@@ -59,7 +59,7 @@ Si tu logo necesita fondo de color:
 <div className="relative w-10 h-10 flex-shrink-0 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-lg p-1.5">
   <Image 
     src="/logo-white.svg"  // Logo blanco para contrastar
-    alt="Artesellos Logo" 
+    alt="ARTEMA Logo"
     width={40}
     height={40}
     className="object-contain"
@@ -77,7 +77,7 @@ Para logos que se ven mejor en círculo:
 <div className="relative w-10 h-10 flex-shrink-0">
   <Image 
     src="/logo.png" 
-    alt="Artesellos Logo" 
+    alt="ARTEMA Logo"
     width={40}
     height={40}
     className="object-contain drop-shadow-sm rounded-full"  // ← rounded-full
@@ -95,7 +95,7 @@ Si quieres un logo más prominente:
 <div className="relative w-12 h-12 flex-shrink-0">  {/* ← Cambia de w-10 h-10 a w-12 h-12 */}
   <Image 
     src="/logo.svg" 
-    alt="Artesellos Logo" 
+    alt="ARTEMA Logo"
     width={48}  // ← Actualiza también width/height
     height={48}
     className="object-contain drop-shadow-md"  // ← Más sombra
@@ -112,7 +112,7 @@ Si quieres un logo más prominente:
 <div className="relative w-10 h-10 flex-shrink-0 transition-transform hover:scale-110 hover:rotate-3">
   <Image 
     src="/logo.svg" 
-    alt="Artesellos Logo" 
+    alt="ARTEMA Logo"
     width={40}
     height={40}
     className="object-contain drop-shadow-sm"
@@ -125,13 +125,13 @@ Si quieres un logo más prominente:
 
 ## 🎯 Ajustar Texto del Logo
 
-Si quieres cambiar o quitar el texto "Artesellos" y "Timbres Personalizados":
+Si quieres cambiar o quitar el texto "ARTEMA" y "Timbres Personalizados":
 
 ### Quitar completamente el texto:
 ```tsx
 {/* Elimina esta sección completa: */}
 <div className="hidden sm:flex flex-col">
-  <span className="text-lg font-bold text-gray-900 tracking-tight leading-tight">Artesellos</span>
+  <span className="text-lg font-bold text-gray-900 tracking-tight leading-tight">ARTEMA</span>
   <span className="text-[10px] text-gray-500 uppercase tracking-wider font-medium leading-tight">Timbres Personalizados</span>
 </div>
 ```
@@ -139,14 +139,14 @@ Si quieres cambiar o quitar el texto "Artesellos" y "Timbres Personalizados":
 ### Solo nombre (sin subtítulo):
 ```tsx
 <div className="hidden sm:block">
-  <span className="text-lg font-bold text-gray-900 tracking-tight">Artesellos</span>
+  <span className="text-lg font-bold text-gray-900 tracking-tight">ARTEMA</span>
 </div>
 ```
 
 ### Cambiar fuente del nombre:
 ```tsx
 <span className="text-xl font-black text-gray-900 tracking-tighter leading-tight">
-  Artesellos
+  ARTEMA
 </span>
 ```
 

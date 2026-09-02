@@ -22,9 +22,9 @@ async function testSMTP() {
     console.error('\n💡 Crea un archivo .env.local con:');
     console.error('   SMTP_HOST=smtp.zoho.com');
     console.error('   SMTP_PORT=465');
-    console.error('   SMTP_USER=tu-email@artesellos.cl');
+    console.error('   SMTP_USER=tu-email@artema.cl');
     console.error('   SMTP_PASSWORD=tu-contraseña');
-    console.error('   CONTACT_MAIL_TO=contacto@artesellos.cl');
+    console.error('   CONTACT_MAIL_TO=contacto@artema.cl');
     return;
   }
 
@@ -78,9 +78,9 @@ async function testSMTP() {
   console.log('📧 Enviando email de prueba...');
   try {
     const info = await transporter.sendMail({
-      from: `"Test Artesellos" <${process.env.SMTP_USER}>`,
+      from: `"Test ARTEMA" <${process.env.SMTP_USER}>`,
       to: process.env.CONTACT_MAIL_TO || process.env.SMTP_USER,
-      subject: '🧪 Test de Configuración SMTP - Artesellos',
+      subject: '🧪 Test de Configuración SMTP - ARTEMA',
       text: 'Este es un email de prueba para verificar la configuración SMTP.',
       html: '<p>Este es un <strong>email de prueba</strong> para verificar la configuración SMTP.</p>',
     });

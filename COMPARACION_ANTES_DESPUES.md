@@ -144,7 +144,7 @@ export default function ChatInterface() {
       setTimeout(() => {
         setMessages([{
           role: 'assistant',
-          content: '¡Hola! 👋 Soy el asistente de Artesellos...'
+          content: '¡Hola! 👋 Soy el asistente de ARTEMA...'
         }]);
       }, 500);
     }
@@ -176,7 +176,7 @@ export default function ChatInterface() {
 ### ANTES
 ```
 ┌─────────────────────────────────────┐
-│  🤖 Artesellos Bot                  │
+│  🤖 ARTEMA Bot                  │
 ├─────────────────────────────────────┤
 │                                     │
 │    ┌───────────────────────┐       │
@@ -198,7 +198,7 @@ export default function ChatInterface() {
 ### AHORA
 ```
 ┌─────────────────────────────────────┐
-│  🤖 Artesellos Bot    [💚 Humano]  │ ✅ WhatsApp siempre visible
+│  🤖 ARTEMA Bot    [💚 Humano]  │ ✅ WhatsApp siempre visible
 ├─────────────────────────────────────┤
 │                                     │
 │  ┌────────────────────────┐        │

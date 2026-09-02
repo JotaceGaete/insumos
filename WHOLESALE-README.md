@@ -1,8 +1,8 @@
-# 🏢 Sistema Mayorista - Artesellos
+# 🏢 Sistema Mayorista - ARTEMA
 
 ## 📋 Descripción General
 
-Sistema completo de mayoristas (receptorías) integrado en la tienda de timbres Artesellos. Permite a comercios autorizados acceder a precios mayoristas, subir archivos para diseños personalizados y gestionar pedidos B2B.
+Sistema completo de mayoristas (receptorías) integrado en la tienda de timbres ARTEMA. Permite a comercios autorizados acceder a precios mayoristas, subir archivos para diseños personalizados y gestionar pedidos B2B.
 
 ## 🚀 Características Implementadas
 
@@ -318,7 +318,7 @@ SELECT id, role FROM profiles WHERE id = 'user_uuid';
 
 Para dudas sobre el sistema mayorista:
 
-- **Email**: mayoristas@artesellos.com
+- **Email**: mayoristas@artema.cl
 - **Teléfono**: +56 9 1234 5678
 - **Documentación**: Este README
 

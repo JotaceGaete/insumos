@@ -11,7 +11,7 @@ export default function GlobalConversionCta() {
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <a
-            href={whatsappHref("Hola, quiero cotizar un timbre de goma con Artesellos.")}
+            href={whatsappHref("Hola, quiero cotizar un timbre de goma con ARTEMA.")}
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50"

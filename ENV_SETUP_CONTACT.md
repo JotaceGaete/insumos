@@ -8,11 +8,11 @@ Agrega estas variables a tu archivo `.env.local`:
 # Configuración SMTP para Zoho Mail
 SMTP_HOST=smtp.zoho.com
 SMTP_PORT=465
-SMTP_USER=contacto@artesellos.cl
+SMTP_USER=contacto@artema.cl
 SMTP_PASSWORD=tu_password_aqui
 
 # Destinatario de los emails de contacto
-CONTACT_MAIL_TO=contacto@artesellos.cl
+CONTACT_MAIL_TO=contacto@artema.cl
 ```
 
 ---
@@ -27,7 +27,7 @@ CONTACT_MAIL_TO=contacto@artesellos.cl
 4. Anota las credenciales:
    - **Servidor**: `smtp.zoho.com`
    - **Puerto**: `465` (SSL) o `587` (TLS)
-   - **Usuario**: Tu email completo (ej: `contacto@artesellos.cl`)
+   - **Usuario**: Tu email completo (ej: `contacto@artema.cl`)
    - **Contraseña**: Tu contraseña de Zoho Mail
 
 ### 2. Contraseña de Aplicación (Recomendado)
@@ -35,7 +35,7 @@ CONTACT_MAIL_TO=contacto@artesellos.cl
 Para mayor seguridad, crea una contraseña específica para aplicaciones:
 
 1. Ve a **Configuración** → **Seguridad** → **Contraseñas de aplicación**
-2. Crea una nueva contraseña con nombre "Artesellos Website"
+2. Crea una nueva contraseña con nombre "ARTEMA Website"
 3. Copia la contraseña generada
 4. Úsala en `SMTP_PASSWORD`
 
@@ -110,7 +110,7 @@ curl -X POST http://localhost:3000/api/contact \
 2. Completa el formulario
 3. Haz clic en "Enviar Mensaje"
 4. Deberías ver: "✅ ¡Mensaje enviado exitosamente!"
-5. Revisa tu bandeja de entrada: `contacto@artesellos.cl`
+5. Revisa tu bandeja de entrada: `contacto@artema.cl`
 
 ---
 
@@ -135,7 +135,7 @@ El email que recibirás tiene este formato profesional:
 ### Header
 - Gradiente Indigo-Purple
 - Título: "📬 Nuevo Mensaje de Contacto"
-- Subtítulo: "Recibido desde artesellos.cl"
+- Subtítulo: "Recibido desde artema.cl"
 
 ### Cuerpo
 - **Datos del Cliente**:
@@ -148,7 +148,7 @@ El email que recibirás tiene este formato profesional:
 - **Call to Action**: Botón "📧 Responder al Cliente"
 
 ### Footer
-- Origen: "artesellos.cl"
+- Origen: "artema.cl"
 - Timestamp en formato chileno
 
 ---

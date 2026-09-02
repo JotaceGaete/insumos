@@ -1,4 +1,4 @@
--- ArteInsumos — Perfil de Cliente Etapa 6C: RLS de comprador.
+-- ARTEMA — Perfil de Cliente Etapa 6C: RLS de comprador.
 --
 -- Agrega políticas SELECT aditivas para que un comprador autenticado (con
 -- customers.user_id = auth.uid(), ya vinculado vía claim_customer_for_

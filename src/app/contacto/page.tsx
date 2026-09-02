@@ -135,10 +135,10 @@ export default function ContactPage() {
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">Email</h3>
                     <a
-                      href="mailto:contacto@artesellos.cl"
+                      href="mailto:contacto@artema.cl"
                       className="text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
                     >
-                      contacto@artesellos.cl
+                      contacto@artema.cl
                     </a>
                     <p className="text-sm text-gray-500 mt-1">Respondemos en 24 horas</p>
                   </div>
@@ -160,7 +160,7 @@ export default function ContactPage() {
                   allowFullScreen
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
-                  title="Ubicación de Artesellos en Coronel"
+                  title="Ubicación de ARTEMA en Coronel"
                 />
               </div>
               <p className="text-sm text-gray-500 mt-3 text-center">
