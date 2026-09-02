@@ -34,6 +34,7 @@ const releasePaymentReservationMigrationPath = new URL('supabase/migrations/2026
 const confirmOrderPaymentReferenceMigrationPath = new URL('supabase/migrations/20260901231742_insumos_confirm_order_payment_reference.sql', root);
 const customersMigrationPath = new URL('supabase/migrations/20260902170527_insumos_customers.sql', root);
 const checkoutCustomerIdentityMigrationPath = new URL('supabase/migrations/20260902174015_insumos_checkout_customer_identity.sql', root);
+const customerAuthClaimMigrationPath = new URL('supabase/migrations/20260902181251_insumos_customer_auth_claim.sql', root);
 
 // Transpiles and executes a TS module in an isolated vm context — not a
 // real module system, so relative `import`s that survive transpilation
@@ -2755,4 +2756,91 @@ test('checkout customer identity migration stays out of scope: no confirm_order_
   const codeOnly = sql.replace(/--[^\n]*/g, '');
   assert.doesNotMatch(codeOnly, /confirm_order_paid|confirm_order_payment_reference|reserve_order_inventory|release_order_inventory|release_order_payment_reservation|mercadopago|payment_reference/i);
   assert.doesNotMatch(sql, /create policy|grant |alter table public\.customers enable row level security/);
+});
+
+// ==========================================================================
+// Customer profile Etapa 6B: identidad auth.users <-> customers.user_id.
+// Índice UNIQUE parcial + RPC claim_customer_for_current_user(), sin
+// trigger sobre auth.users, sin RLS de comprador (Etapa 6C), sin tocar
+// checkout (Etapa 6G). La identidad viene exclusivamente de auth.uid().
+// ==========================================================================
+
+test('customer auth claim migration: creates a partial UNIQUE index on customers.user_id (where user_id is not null) — guarantees at most one customer per auth.users.id while still allowing unlimited unlinked guest customers', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /create unique index if not exists customers_user_id_key\s*\n\s*on public\.customers\(user_id\)\s*\n\s*where user_id is not null;/);
+});
+
+test('claim_customer_for_current_user(): takes zero parameters — the client can never pass an email, customer_id, or user_id for this function to trust', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /create or replace function public\.claim_customer_for_current_user\(\)\s*\n\s*returns uuid/);
+});
+
+test('claim_customer_for_current_user(): rejects immediately when auth.uid() is null (anonymous session), before touching auth.users or customers', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /v_user_id := auth\.uid\(\);\s*\n\s*if v_user_id is null then\s*\n\s*raise exception 'No autenticado\.';/);
+  const authCheckIndex = sql.indexOf("raise exception 'No autenticado.'");
+  const authUsersQueryIndex = sql.indexOf('from auth.users');
+  assert.ok(authCheckIndex < authUsersQueryIndex, 'the auth.uid() null check must happen before querying auth.users');
+});
+
+test('claim_customer_for_current_user(): queries auth.users internally by the resolved auth.uid() — email and email_confirmed_at are never read from a function argument', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /select email, email_confirmed_at into v_email, v_email_confirmed_at\s*\n\s*from auth\.users\s*\n\s*where id = v_user_id;/);
+  // No parameter named p_email/p_customer_id/p_user_id exists anywhere to feed this lookup.
+  assert.doesNotMatch(sql, /p_email|p_customer_id|p_user_id/);
+});
+
+test('claim_customer_for_current_user(): requires a non-empty email AND email_confirmed_at IS NOT NULL — an unconfirmed session must never link/create a customer', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /if coalesce\(length\(trim\(v_email\)\), 0\) = 0 then\s*\n\s*raise exception 'No fue posible verificar tu correo\.';/);
+  assert.match(sql, /if v_email_confirmed_at is null then\s*\n\s*raise exception 'Debes confirmar tu correo antes de vincular tu cuenta\.';/);
+});
+
+test('claim_customer_for_current_user(): normalizes email as lower(trim(...)) — same semantics as create_pending_order and the Etapa 2 backfill, no incompatible second definition introduced', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /v_email_normalized := lower\(trim\(v_email\)\);/);
+});
+
+test('claim_customer_for_current_user(): when auth.uid() already owns a customer, returns the SAME customer id idempotently if the email still matches, and rejects (never fusiona) if it does not', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /select id, email_normalized into v_linked_customer_id, v_linked_email\s*\n\s*from public\.customers\s*\n\s*where user_id = v_user_id;/);
+  assert.match(sql, /if v_linked_email = v_email_normalized then\s*\n\s*return v_linked_customer_id;\s*\n\s*else\s*\n\s*raise exception 'Tu cuenta ya está vinculada a otro cliente\.';/);
+});
+
+test('claim_customer_for_current_user(): resolves/creates via INSERT ... ON CONFLICT (email_normalized) — not SELECT-then-INSERT — the same concurrency-safe pattern as create_pending_order, and never reassigns an existing user_id (coalesce keeps the original owner)', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /insert into public\.customers \(email_normalized, user_id\)\s*\n\s*values \(v_email_normalized, v_user_id\)\s*\n\s*on conflict \(email_normalized\) do update set\s*\n\s*user_id = coalesce\(public\.customers\.user_id, excluded\.user_id\),/);
+  assert.match(sql, /returning id, user_id into v_customer_id, v_result_user_id;/);
+});
+
+test('claim_customer_for_current_user(): rejects (never reasigna) when the email-matched customer already belongs to a different auth.uid() — checked AFTER the upsert by comparing the returned owner against the caller', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /if v_result_user_id is distinct from v_user_id then\s*\n\s*raise exception 'Este correo ya pertenece a otra cuenta\.';/);
+});
+
+test('claim_customer_for_current_user(): EXECUTE is revoked from public/anon and granted only to authenticated — an anonymous request must be denied by Postgres itself, before any function logic runs', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /revoke execute on function public\.claim_customer_for_current_user\(\) from public;/);
+  assert.match(sql, /revoke execute on function public\.claim_customer_for_current_user\(\) from anon;/);
+  assert.match(sql, /grant execute on function public\.claim_customer_for_current_user\(\) to authenticated;/);
+  // No grant to anon anywhere in the file.
+  assert.doesNotMatch(sql, /grant execute[^;]*to anon/);
+});
+
+test('claim_customer_for_current_user(): uses SECURITY DEFINER with an explicit search_path=public — same hardening convention as every other SECURITY DEFINER function in this project (has_role, create_pending_order, etc.)', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  assert.match(sql, /language plpgsql\s*\nsecurity definer\s*\nset search_path = public\s*\nas \$\$/);
+});
+
+test('customer auth claim migration deliberately creates NO trigger on auth.users — the app calls claim_customer_for_current_user() explicitly after a real session exists, works identically for brand-new signups and already-confirmed pre-existing users', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /create trigger[^;]*auth\.users|on_auth_user_created|after insert on auth\.users|after update of email_confirmed_at/i);
+});
+
+test('customer auth claim migration stays out of scope: no RLS policy changes on customers/orders/order_items (Etapa 6C), no changes to create_pending_order or any checkout/payment/inventory RPC (Etapa 6G / Etapa 5 stays closed)', async () => {
+  const sql = await readFile(customerAuthClaimMigrationPath, 'utf8');
+  const codeOnly = sql.replace(/--[^\n]*/g, '');
+  assert.doesNotMatch(codeOnly, /create policy|alter table public\.(customers|orders|order_items) enable row level security/);
+  assert.doesNotMatch(codeOnly, /create or replace function public\.create_pending_order|confirm_order_paid|confirm_order_payment_reference|reserve_order_inventory|release_order_inventory|release_order_payment_reservation|mercadopago/i);
 });
