@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Database } from '@/types/database';
 // NOTA: NO importar createSupabaseServer aquí para evitar conflictos con Client Components
 
@@ -10,15 +10,38 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 console.log('🔧 Supabase URL:', supabaseUrl ? 'Configurada ✅' : 'No configurada ❌');
 console.log('🔧 Supabase Key:', supabaseAnonKey ? 'Configurada ✅' : 'No configurada ❌');
 
+// `supabase`/`supabaseServer` deben seguir siendo objetos usables
+// directamente (`supabase.from(...)`, `supabase.auth...`) para no forzar una
+// refactorización de los ~14 archivos que los importan así. Este Proxy
+// preserva esa API pública pero difiere el `createClient(...)` real hasta el
+// primer acceso a una propiedad — que solo ocurre en tiempo de request,
+// nunca durante `next build` — así la ausencia de estas variables legacy en
+// un ambiente distinto a Artesellos no rompe la compilación de rutas que
+// simplemente importan este módulo sin llegar a usarlo.
+function createLazySupabaseClient(factory: () => SupabaseClient<Database>): SupabaseClient<Database> {
+  let instance: SupabaseClient<Database> | null = null;
+  const getInstance = () => {
+    if (!instance) instance = factory();
+    return instance;
+  };
+  return new Proxy({} as SupabaseClient<Database>, {
+    get(_target, prop, _receiver) {
+      const real = getInstance();
+      const value = Reflect.get(real, prop, real);
+      return typeof value === 'function' ? value.bind(real) : value;
+    },
+  });
+}
+
 // Cliente de Supabase para el cliente (browser)
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+export const supabase = createLazySupabaseClient(() => createClient<Database>(supabaseUrl, supabaseAnonKey));
 
 // Cliente de Supabase para el servidor (SSR)
-export const supabaseServer = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+export const supabaseServer = createLazySupabaseClient(() => createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: false,
   },
-});
+}));
 
 // Tipos para las tablas de Supabase
 export interface Product {

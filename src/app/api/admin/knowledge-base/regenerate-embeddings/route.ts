@@ -10,10 +10,6 @@ const ALLOWED_ADMIN_EMAILS = new Set<string>([
   'artesellos@outlook.com',
 ]);
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(req: NextRequest) {
   try {
     const BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true' || process.env.NODE_ENV !== 'production';
@@ -23,6 +19,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
       }
     }
+
+    // Cliente OpenAI: construido aquí (no a nivel de módulo) para que la
+    // ausencia de OPENAI_API_KEY en un ambiente distinto a Artesellos no
+    // rompa `next build` — solo falla si este endpoint se invoca.
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
 
     const supabase = createSupabaseAdmin();
     

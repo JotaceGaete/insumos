@@ -3,12 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 import { findRelevantContext } from '@/lib/vectorSearch';
 import { createSupabaseAdmin } from '@/lib/supabaseServer';
 
-// Cliente Supabase (para búsqueda de productos)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 // Cliente OpenAI - inicializado condicionalmente
 let openai: OpenAI | null = null;
 try {
@@ -411,6 +405,13 @@ INSTRUCCIONES:
       
       // Separar marca y modelo si están juntos
       const parts = searchTerm.split(/\s+/);
+      // Cliente Supabase: construido aquí (no a nivel de módulo) para que la
+      // ausencia de estas variables legacy en un ambiente distinto a
+      // Artesellos no rompa `next build` — solo falla si este endpoint se invoca.
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
       let query = supabase.from('stock_timbres').select('*');
       
       // Si tenemos "shiny 722", buscar marca=shiny AND modelo=722

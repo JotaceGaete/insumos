@@ -5,16 +5,26 @@
 import OpenAI from 'openai';
 import { createSupabaseAdmin } from './supabaseServer';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Cliente OpenAI: construido de forma diferida (singleton memoizado) para
+// que la ausencia de OPENAI_API_KEY en un ambiente distinto a Artesellos no
+// rompa `next build` en cualquier ruta que importe este módulo — solo falla
+// si alguna de las funciones exportadas aquí abajo llega a invocarse.
+let openaiClient: OpenAI | null = null;
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+}
 
 /**
  * Genera un embedding para un texto usando OpenAI
  */
 async function generateEmbedding(text: string): Promise<number[]> {
   try {
-    const response = await openai.embeddings.create({
+    const response = await getOpenAIClient().embeddings.create({
       model: 'text-embedding-3-small',
       input: text,
     });
