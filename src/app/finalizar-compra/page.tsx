@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, Store, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Minus, Plus, Store, Trash2, Truck } from 'lucide-react';
 import { useInsumosCart } from '@/features/cart/CartProvider';
 import { listComunasForRegion, listRegionNames } from '@/features/checkout/regionComuna';
 import {
@@ -79,7 +79,7 @@ const REGION_NAMES = listRegionNames();
 
 export default function FinalizarCompraPage() {
   const router = useRouter();
-  const { items, subtotal, clearCart, hydrated } = useInsumosCart();
+  const { items, subtotal, clearCart, hydrated, increment, decrement, removeItem } = useInsumosCart();
   const [form, setForm] = useState<CheckoutForm>(emptyForm);
   const [touched, setTouched] = useState<TouchedFields>(emptyTouched);
   const [submitting, setSubmitting] = useState(false);
@@ -185,6 +185,16 @@ export default function FinalizarCompraPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isShipping, form.useSameAddressForBilling, form.region, form.comuna, form.address, form.number, form.unit]);
 
+  // Moving the CTA into the summary card (far from the fields it validates)
+  // means the top-of-form error banner alone can go unnoticed — scroll to
+  // and focus the first invalid field so the buyer sees exactly what to fix.
+  function focusField(id: string) {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    element.focus({ preventScroll: true });
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setErrorMessage(null);
@@ -192,31 +202,46 @@ export default function FinalizarCompraPage() {
 
     if (!form.fullName.trim() || !form.email.trim() || !form.phoneDigits.trim()) {
       setErrorMessage('Completa todos los campos obligatorios.');
+      focusField(!form.fullName.trim() ? 'fullName' : !form.email.trim() ? 'email' : 'phone');
       return;
     }
     if (!isValidFullName(form.fullName)) {
       setErrorMessage('Ingresa un nombre válido.');
+      focusField('fullName');
       return;
     }
     if (!isValidEmail(form.email)) {
       setErrorMessage('Ingresa un correo electrónico válido.');
+      focusField('email');
       return;
     }
     if (!isValidChileanMobile(normalizedPhone)) {
       setErrorMessage('Ingresa un celular chileno válido.');
+      focusField('phone');
       return;
     }
     if (isShipping && (!form.region.trim() || !form.comuna.trim() || !form.address.trim() || !form.number.trim())) {
       setErrorMessage('Completa todos los campos obligatorios.');
+      focusField(!form.region.trim() ? 'region' : !form.comuna.trim() ? 'comuna' : !form.address.trim() ? 'address' : 'number');
       return;
     }
     if (isFactura) {
       if (!isValidRut(form.billingRut)) {
         setErrorMessage('Ingresa un RUT válido para la factura.');
+        focusField('billingRut');
         return;
       }
       if (!form.businessName.trim() || !form.businessActivity.trim() || !form.billingEmail.trim() || !form.billingRegion.trim() || !form.billingComuna.trim() || !form.billingAddress.trim() || !form.billingNumber.trim()) {
         setErrorMessage('Completa todos los datos de facturación.');
+        focusField(
+          !form.businessName.trim() ? 'businessName'
+            : !form.businessActivity.trim() ? 'businessActivity'
+              : !form.billingEmail.trim() ? 'billingEmail'
+                : !form.billingRegion.trim() ? 'billingRegion'
+                  : !form.billingComuna.trim() ? 'billingComuna'
+                    : !form.billingAddress.trim() ? 'billingAddress'
+                      : 'billingNumber'
+        );
         return;
       }
     }
@@ -545,37 +570,72 @@ export default function FinalizarCompraPage() {
                 {errorMessage}
               </p>
             )}
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-insumos-forest px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-insumos-forest-dark disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitting ? 'Enviando pedido...' : 'Confirmar pedido'}
-            </button>
           </div>
 
           <aside className="rounded-2xl border border-insumos-line bg-white p-5 sm:p-6 lg:sticky lg:top-24">
             <h2 className="text-base font-bold text-insumos-ink">Resumen del pedido</h2>
-            <ul className="mt-4 space-y-3">
-              {items.map((item) => (
-                <li key={`${item.productId}:${item.variantId}`} className="flex gap-3">
-                  <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border border-insumos-line bg-insumos-cream">
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.imageUrl} alt={item.productName} className="absolute inset-0 h-full w-full object-contain p-1" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-[9px] font-medium text-insumos-sage">Sin imagen</div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-1 text-sm font-bold text-insumos-ink">{item.productName}</p>
-                    <p className="text-xs text-stone-500">{item.variantName} · x{item.quantity}</p>
-                    <p className="mt-0.5 text-xs text-stone-500">{formatPrice(item.unitPrice)} c/u</p>
-                  </div>
-                  <p className="flex-shrink-0 text-sm font-semibold text-insumos-ink">{formatPrice(item.unitPrice * item.quantity)}</p>
-                </li>
-              ))}
+            <ul className="mt-4 space-y-4">
+              {items.map((item) => {
+                // Same ceiling ProductDetail/carrito already enforce: stock is
+                // the only real per-line limit modeled in the cart today (no
+                // min_quantity/max_quantity on CartLine) — decrementCartLine
+                // itself already floors at 1, so quantity never needs a
+                // separate minimum check here.
+                const atMaxStock = item.stockAvailable !== null && item.quantity >= item.stockAvailable;
+                return (
+                  <li key={`${item.productId}:${item.variantId}`} className="flex gap-3">
+                    <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border border-insumos-line bg-insumos-cream">
+                      {item.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.imageUrl} alt={item.productName} className="absolute inset-0 h-full w-full object-contain p-1" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[9px] font-medium text-insumos-sage">Sin imagen</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="line-clamp-1 text-sm font-bold text-insumos-ink">{item.productName}</p>
+                          <p className="text-xs text-stone-500">{item.variantName}</p>
+                          <p className="mt-0.5 text-xs text-stone-500">{formatPrice(item.unitPrice)} c/u</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.productId, item.variantId)}
+                          aria-label={`Eliminar ${item.productName} del pedido`}
+                          className="flex-shrink-0 p-1 text-stone-400 transition-colors hover:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        </button>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1 rounded-full border border-insumos-line">
+                          <button
+                            type="button"
+                            onClick={() => decrement(item.productId, item.variantId)}
+                            disabled={item.quantity <= 1}
+                            aria-label={`Restar cantidad de ${item.productName}`}
+                            className="grid h-8 w-8 place-items-center rounded-full text-insumos-forest disabled:opacity-30"
+                          >
+                            <Minus className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                          <span className="w-6 text-center text-xs font-semibold text-insumos-ink">{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => increment(item.productId, item.variantId)}
+                            disabled={atMaxStock}
+                            aria-label={`Sumar cantidad de ${item.productName}`}
+                            className="grid h-8 w-8 place-items-center rounded-full text-insumos-forest disabled:opacity-30"
+                          >
+                            <Plus className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </div>
+                        <p className="text-sm font-semibold text-insumos-ink">{formatPrice(item.unitPrice * item.quantity)}</p>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
 
             <div className="mt-4 space-y-2 border-t border-insumos-line pt-4 text-sm">
@@ -624,6 +684,15 @@ export default function FinalizarCompraPage() {
               <span>Total</span>
               <span>{formatPrice(subtotal)}</span>
             </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-insumos-forest px-4 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-insumos-forest-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? 'Enviando pedido...' : 'Ir a pagar'}
+            </button>
+
             <p className="mt-3 text-xs text-stone-500">
               {!isShipping
                 ? 'Retira tu pedido sin costo en tienda.'

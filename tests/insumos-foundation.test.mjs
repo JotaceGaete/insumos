@@ -1390,6 +1390,113 @@ test('/finalizar-compra: summary panel shows "Retiro en tienda" / GRATIS with no
   assert.ok(isShippingGateIndex >= 0, 'free-shipping progress bar must be gated behind isShipping');
 });
 
+// ==========================================================================
+// /finalizar-compra: editable order summary (increment/decrement/remove
+// reuse InsumosCartProvider directly — no second cart state), CTA moved
+// into the summary card as "Ir a pagar".
+// ==========================================================================
+
+test('/finalizar-compra: summary line items expose increase/decrease/remove controls wired directly to useInsumosCart (increment/decrement/removeItem) — no second cart state or duplicated line-item logic', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  // Pulled straight off the same context /carrito already uses — proves
+  // this isn't a parallel cart implementation.
+  assert.match(page, /const \{ items, subtotal, clearCart, hydrated, increment, decrement, removeItem \} = useInsumosCart\(\);/);
+  assert.match(page, /onClick=\{\(\) => increment\(item\.productId, item\.variantId\)\}/);
+  assert.match(page, /onClick=\{\(\) => decrement\(item\.productId, item\.variantId\)\}/);
+  assert.match(page, /onClick=\{\(\) => removeItem\(item\.productId, item\.variantId\)\}/);
+  // Only one place in the whole file renders a cart line list (the other
+  // items.map — mapping to {variantId, quantity} for the checkout request
+  // body — is a single-expression object-literal map, not a render) — no
+  // shadow array, no local quantity state duplicating what the context holds.
+  const itemsRenderMapCount = (page.match(/\{items\.map\(\(item\) => \{/g) || []).length;
+  assert.strictEqual(itemsRenderMapCount, 1, 'exactly one items.map(...) => { — a second render map would mean a duplicated cart render');
+});
+
+test('/finalizar-compra: decrease button floors at 1 (never removes via decrement) and increase button is capped by real stockAvailable, exactly like /carrito', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /disabled=\{item\.quantity <= 1\}/);
+  assert.match(page, /const atMaxStock = item\.stockAvailable !== null && item\.quantity >= item\.stockAvailable;/);
+  assert.match(page, /disabled=\{atMaxStock\}/);
+});
+
+test('/finalizar-compra: each summary line shows image, product name, variant, unit price, quantity and line subtotal', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  const asideIndex = page.indexOf('<aside');
+  const summarySection = page.slice(asideIndex);
+  assert.match(summarySection, /item\.imageUrl/);
+  assert.match(summarySection, /\{item\.productName\}/);
+  assert.match(summarySection, /\{item\.variantName\}/);
+  assert.match(summarySection, /\{formatPrice\(item\.unitPrice\)\} c\/u/);
+  assert.match(summarySection, /\{item\.quantity\}/);
+  assert.match(summarySection, /\{formatPrice\(item\.unitPrice \* item\.quantity\)\}/);
+});
+
+test('/finalizar-compra: subtotal, total and free-shipping progress all read from the same reactive `subtotal`/`items` the edit controls mutate — nothing is snapshotted separately', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  // subtotal/remainderForFreeShipping/shippingPolicy are derived (useMemo)
+  // from the exact same `subtotal` destructured from useInsumosCart() that
+  // increment/decrement/removeItem update — editing a line therefore
+  // recalculates all of these on the next render with no extra plumbing.
+  assert.match(page, /const shippingPolicy = useMemo\(\(\) => computeShippingPolicy\(subtotal\), \[subtotal\]\);/);
+  assert.match(page, /const remainderForFreeShipping = useMemo\(\(\) => amountUntilFreeShipping\(subtotal\), \[subtotal\]\);/);
+  assert.match(page, /<span>Subtotal productos<\/span>\s*\n\s*<span>\{formatPrice\(subtotal\)\}<\/span>/);
+  assert.match(page, /<span>Total<\/span>\s*\n\s*<span>\{formatPrice\(subtotal\)\}<\/span>/);
+});
+
+test('/finalizar-compra: emptying the cart from the summary controls cannot reach the submit handler — the existing empty-cart guard redirects to /carrito before any form renders', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /if \(hydrated && items\.length === 0 && !orderPlaced\) router\.replace\('\/carrito'\);/);
+  assert.match(page, /if \(!hydrated \|\| \(items\.length === 0 && !orderPlaced\)\) \{\s*\n\s*return <div className="min-h-screen bg-insumos-cream" \/>;/);
+  // The guard runs before the <form>/CTA are ever returned, so removing the
+  // last line makes handleSubmit unreachable without a bespoke empty-state
+  // duplicate — /carrito's own empty state (with "Explorar productos") is
+  // what the buyer lands on instead.
+  const guardIndex = page.indexOf('if (!hydrated || (items.length === 0 && !orderPlaced))');
+  const formIndex = page.indexOf('<form onSubmit={handleSubmit}');
+  assert.ok(guardIndex >= 0 && formIndex > guardIndex, 'the empty-cart guard must return before the form is reached');
+});
+
+test('/finalizar-compra: primary CTA reads "Ir a pagar", lives inside the "Resumen del pedido" card directly below the Total block, and the legacy "Confirmar pedido" button no longer exists anywhere', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.doesNotMatch(page, /Confirmar pedido/);
+  assert.match(page, /\{submitting \? 'Enviando pedido\.\.\.' : 'Ir a pagar'\}/);
+  const totalBlockIndex = page.indexOf('<span>Total</span>');
+  const ctaIndex = page.indexOf("'Ir a pagar'");
+  const asideCloseIndex = page.lastIndexOf('</aside>');
+  assert.ok(totalBlockIndex >= 0 && ctaIndex > totalBlockIndex && ctaIndex < asideCloseIndex, 'CTA must sit after Total and still inside <aside> (the Resumen del pedido card)');
+});
+
+test('/finalizar-compra: the "Ir a pagar" button is the same submit — one <form>, one handleSubmit, one fetch to /api/insumos/checkout — not a second/duplicated checkout flow', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  const formTagCount = (page.match(/<form /g) || []).length;
+  assert.strictEqual(formTagCount, 1, 'exactly one <form> — the CTA must submit the existing form, not open a second one');
+  const handleSubmitDeclCount = (page.match(/async function handleSubmit/g) || []).length;
+  assert.strictEqual(handleSubmitDeclCount, 1);
+  const fetchCheckoutCount = (page.match(/fetch\('\/api\/insumos\/checkout'/g) || []).length;
+  assert.strictEqual(fetchCheckoutCount, 1);
+  // The CTA button itself carries type="submit" with no onClick of its own —
+  // it fires the form's onSubmit natively, exactly like the button it replaced.
+  const ctaButtonBlock = page.slice(page.indexOf("<span>Total</span>"), page.indexOf("'Ir a pagar'"));
+  assert.match(ctaButtonBlock, /type="submit"/);
+  assert.doesNotMatch(ctaButtonBlock, /onClick=/);
+});
+
+test('/finalizar-compra: submitting with missing/invalid required fields focuses and scrolls to the first invalid field, in addition to the existing error banner', async () => {
+  const page = await readFile(new URL('src/app/finalizar-compra/page.tsx', root), 'utf8');
+  assert.match(page, /function focusField\(id: string\) \{/);
+  assert.match(page, /element\.scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\);/);
+  assert.match(page, /element\.focus\(\{ preventScroll: true \}\);/);
+  // 10 total setErrorMessage(...) calls in the file: the initial reset, 7
+  // field-validation branches (each paired with focusField), and 2
+  // server/network-error branches (response not-ok, catch) which have no
+  // single field to focus and correctly stay unpaired.
+  const setErrorMessageCalls = (page.match(/setErrorMessage\(/g) || []).length;
+  // focusField( matches both the function declaration and its 7 call sites.
+  const focusFieldOccurrences = (page.match(/focusField\(/g) || []).length;
+  assert.strictEqual(setErrorMessageCalls, 10);
+  assert.strictEqual(focusFieldOccurrences, 8);
+});
+
 test('/pedido/[id]/confirmacion: shows "Retiro en tienda" for store_pickup orders, hides the carrier line, and never shows "por pagar" for a pickup order', async () => {
   const page = await readFile(new URL('src/app/pedido/[id]/confirmacion/page.tsx', root), 'utf8');
   assert.match(page, /order\.deliveryMethod === 'store_pickup' \? 'Retiro en tienda' : 'Despacho'/);
